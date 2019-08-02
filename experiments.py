@@ -19,6 +19,7 @@ from pkg.distributions import *
 from pkg.jump_mcmc import *
 from pkg.mh_mcmc import mh_mcmc
 from pkg.hidden_markov_model import *
+from pkg.smjp_utils import *
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
@@ -139,8 +140,61 @@ def sample_alpha_parameters(number_of_states):
 
 def experiment_2():
     """ 
-    This sampling a cts-t disc-state markov chain 
-    WITHOUT data (e.g. the prior)
+    Run experiment 1 from Rao-Teh alg.
     """
+
+    #
+    # create hazard functions defining the sMJP
+    #
+
+    state_space = [1,2,3]
+    s_size = len(state_space)
+    shape_mat = npr.uniform(0.6,3.0,s_size**2).reshape((s_size,s_size))
+    scale_mat = np.ones((s_size,s_size)) 
+    weibull_hazard_create_A = partial(weibull_hazard_create_unset,shape_mat,scale_mat,state_space)
+    scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,2)
+    weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,scale_mat_tilde,state_space)
+    hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A)
+    hazard_B = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_B)
+
+    #
+    # generate observations from data
+    #
+
+    number_of_observations = 20
+    observation_space = state_space # just an arbitrary choice;
+    data = np.ones(number_of_observations)
+    
+    #
+    # pi_0 should actually picks from state_space; {1,2,3}
+    # in augmented_state_space terms, we pick only from {[1,0],[2,0],[3,0]}
+    #
+    pi_0 = MultinomialDistribution({'prob_vector': np.ones(ss_size)/ss_size})
+
+
+    #
+    # gibbs sampling for-loop
+    #
+
+    smjp_sampler_input = [W,state_space,hazard_A,hazard_B,emission,data,pi_0]
+
+    aggregation = {'W':[],'S':[],'prob':[]}
+    number_of_samples = 1000
+    for i in range(number_of_samples):
+        W = generate_random_grid()
+        samples,alphas,prob = sample_smjp_trajectory(*smjp_sampler_input)
+        aggregation['W'].append(W)
+        aggregation['S'].append(samples)
+        aggregation['prob'].append(prob)
+    
+
+    #
+    # compute some evaluation metrics
+    #
     
     
+
+
+
+
+

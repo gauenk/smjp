@@ -177,6 +177,28 @@ def create_upperbound_scale(shape_mat,scale_mat,constant):
     return scales_mat_tilde
 
 #
+# main function used in a Gibbs sampler
+#
+
+def sample_smjp_trajectory(W,state_space,hazard_A,hazard_B,emission,data,pi_0):
+    augmented_state_space = enumerate_state_space(W,state_space)
+    aug_ss_size = len(augmented_state_space)
+    pi = sMJPWrapper(smjp_transition,augmented_state_space,hazard_A,hazard_B)
+    hmm_init = {'emission': HMMWrapper(emission,True), 
+                'transition': transition,
+                'data': data,
+                'state_alphabet': state_space,
+                'pi_0': pi_0,
+                'path_length': len(W),
+                'sample_dimension': 1,
+                }
+    hmm = HiddenMarkovModel([],**hmm_init)
+    alphas,prob = hmm.likelihood() # only for dev.
+    samples = hmm.backward_sampling()
+    return samples,alphas,prob
+
+
+#
 # Testing.
 #
 
