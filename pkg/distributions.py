@@ -4,7 +4,7 @@ import numpy as np
 import numpy.random as npr
 from scipy.special import gammaln as log_gamma_fx # for gamma distribution
 from scipy.stats import invgamma,weibull_min
-from utils import *
+from pkg.utils import *
 
 class Distribution():
     """
@@ -19,6 +19,7 @@ class Distribution():
         # to use when the Distribution is a likelihood function: p(x|\theta)
         self.proir = None
         self.posterior = None
+        self.is_hazard_rate = False
 
     @property
     def p(self):
@@ -231,11 +232,12 @@ class ExpPiecewiseLinearDistribution(Distribution):
 
 class WeibullDistribution(Distribution):
 
-    def __init__(self,params,params_keywords=None,params_transforms=None,**kwargs):
+    def __init__(self,params,params_keywords=None,params_transforms=None,is_hazard_rate=False,**kwargs):
         super().__init__('Weibull')
         self.params = edict(params)
         self.params_keywords = params_keywords
         self.params_transforms = params_transforms
+        self.is_hazard_rate = is_hazard_rate
         self.set_parameters(params,**kwargs)
         
     def set_parameters_edict(self,params):
@@ -260,16 +262,24 @@ class WeibullDistribution(Distribution):
             so the value happens to correspond to the index
             """
             if (x < 0): return 0 # only non-negative "x"
-            ll += np.log(params.shape) - np.log(params.scale) + \
-                  (params.shape - 1) * ( np.ma.log([x]).filled(0) - np.log(params.scale) ) +\
-                  -(x/params.scale)**params.shape
+            if self.is_hazard_rate:
+                ll += np.log(params.shape) - np.log(params.scale) + \
+                      (params.shape - 1) * ( np.ma.log([x]).filled(0) - np.log(params.scale) )
+            else:
+                ll += np.log(params.shape) - np.log(params.scale) + \
+                      (params.shape - 1) * ( np.ma.log([x]).filled(0) - np.log(params.scale) ) +\
+                      -(x/params.scale)**params.shape
             ll = ll[0]
         else:
             for x in x_list:
                 if x < 0: continue # only non-negative "x"
-                ll += np.log(params.shape) - np.log(params.scale) + \
-                      (params.shape - 1) * ( np.ma.log(x).filled(0) - np.log(params.scale) ) +\
-                      -(x/params.scale)**params.shape
+                if self.is_hazard_rate:
+                    ll += np.log(params.shape) - np.log(params.scale) + \
+                          (params.shape - 1) * ( np.ma.log([x]).filled(0) - np.log(params.scale) )
+                else:
+                    ll += np.log(params.shape) - np.log(params.scale) + \
+                          (params.shape - 1) * ( np.ma.log(x).filled(0) - np.log(params.scale) ) +\
+                          -(x/params.scale)**params.shape
         return ll
         
     def likelihood(self,x,params = None,**kwargs):

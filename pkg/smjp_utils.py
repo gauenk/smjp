@@ -1,11 +1,13 @@
 import numpy as np
 import numpy.random as npr
 from functools import partial
-from distributions import WeibullDistribution as Weibull
-from utils import *
+from pkg.distributions import WeibullDistribution as Weibull
+from pkg.utils import *
 
-def smjp_transition(s_curr,s_next,observation,state_space,A,B):
+def smjp_transition(s_curr,s_next,observation,augmented_state_space,A,B):
     """
+    "augmented_state_space" includes the time discretization
+
     returns P(v_i,l_i | v_{i-1}, l_{i-1}, \delta w_i)
 
     P(v_i,l_i | v_{i-1}, l_{i-1}, \delta w_i) = 
@@ -14,54 +16,75 @@ def smjp_transition(s_curr,s_next,observation,state_space,A,B):
     2. P(v_i,l_i | v_{i-1}, l_i, \delta w_i) 
     """
     log_probability = 0
-    delta_w = observation[0]
-    v_curr,l_curr = state_space[s_curr]
-    v_next,l_next = state_space[s_next]
+    delta_w = observation
+    v_curr,l_curr = augmented_state_space[s_curr]
+    v_next,l_next = augmented_state_space[s_next]
+    t_hold = delta_w + l_curr
+    # (T,?,?)
+    # (F,T,T)
 
     # Note: we can return immmediately if the "l_next" is not possible.
     # -> this is common since l_next can only be {0, l_curr + delta_w }
-    if (l_next != 0) and (l_next != l_curr + delta_w):
+    if (l_next != 0) and (l_next != t_hold):
         return 0
 
     # if we thin the current time-step, we can not transition state values.
-    if (l_next == l_curr + delta_w) and (v_next != v_curr):
+    if (l_next == t_hold) and (v_next != v_curr):
         return 0
 
+    # print(delta_w)
+    # print(s_curr,s_next)
+    # print(augmented_state_space[s_curr],augmented_state_space[s_next])
+    # print(l_next == 0,l_next == t_hold,v_next == v_curr)
+
     # P(l_i | l_{i-1}, \delta w_i)
-    print(A([delta_w])[0])
-    print("v_curr",v_curr)
-    ratio = A([delta_w])[v_curr] / B([delta_w])[v_curr] # TODO: define A, B
+    l_ratio = A([t_hold])[v_curr] / B([t_hold])[v_curr]
+    assert l_ratio <= 1, "the ratio of hazard functions should be <= 1"
     if l_next == 0:
-        log_probability += np.ma.log( l_ratio ).filled(0)
+        log_probability += np.ma.log( [l_ratio] ).filled(0)[0]
+        # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) : note below is _not_ a probability.
+        log_probability += np.ma.log([ A([t_hold])[v_curr,v_next] ]).filled(0)[0]
     else:
         # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) = 1 if v_i == v_{i-1}
-        return (1 - ratio) 
-
-    # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) 
-    log_probability += np.ma.log( A(delta_w)[v_curr,v_next] ).filled(0)
-    return np.exp(log_probability)
+        # print(l_ratio)
+        log_probability += np.ma.log( [1. - l_ratio] ).filled(0)[0]
+    print(log_probability)
+    return log_probability # np.exp(log_probability)
 
 def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create):
-    delta_w = observation[0]
+    """
+    The State_Space here refers to the actual state values!
+    This is different from the entire sMJP "state space" which includes 
+    the randomized grid.
+    """
+    t_hold = observation
     if s_next is None: # return Prob of leaving s_curr for ~any state~
         # possible error here for A_s
         # this "log" doesn't help much:
         ## its a sum-of-probs;
         ## "log" method is helpful when its a prod-of-probs
         # (e.g. not time for "log-sum-exp")
-        v_curr,_ = state_space[s_curr]
-        all_v = [v for v,l in state_space]
         likelihood = 0
-        for v_next in all_v:
-            if v_next == v_curr: continue # skip the same state (goal of this code snippet)
-            hazard_rate = h_create(v_curr,v_next)
-            likelihood += hazard_rate.l(delta_w)
+        for s_next in state_space:
+            # skip the same state (goal of this code snippet)
+            if s_next == s_curr: continue 
+            hazard_rate = h_create(s_curr,s_next)
+            likelihood += hazard_rate.l(t_hold)
+        # we don't normalized; if we do the result is incorrect.
+        # hazard_rate = h_create(s_curr,s_curr)
+        # current_likelihood =  hazard_rate.l(t_hold)
+        # likelihood = likelihood / (likelihood + current_likelihood) # normalize over ~all~
         return likelihood
-    else:  # return Prob of leaving s_curr for s_next
-        v_curr,_ = state_space[s_curr]
-        v_next,_ = state_space[s_next]
-        hazard_rate = h_create(v_curr,v_next)
-        likelihood = hazard_rate.l(delta_w) # possibly un-normalized!!!
+    else:  # return Prob of leaving s_curr for s_next; normalized over s_next
+        hazard_rate = h_create(s_curr,s_next)
+        likelihood = hazard_rate.l(t_hold)
+        normalization_likelihood = likelihood
+        for s_next in state_space:
+            # skip the same state (goal of this code snippet)
+            if s_next == s_curr: continue 
+            hazard_rate = h_create(s_curr,s_next)
+            normalization_likelihood += hazard_rate.l(t_hold)
+        likelihood /= normalization_likelihood
         return likelihood
         
 class sMJPWrapper(object):
@@ -81,11 +104,13 @@ class sMJPWrapper(object):
     use for the proper function argument, \delta w_i.
     """
 
-    def __init__(self,state_function,state_space,*args):
+    def __init__(self,state_function,state_space,*args,observation_index=0):
         self.state_function = state_function
         self.state_space = state_space
-        self.state_function_args = args
         self.observation = 0
+        self.observation_index = observation_index
+        self.state_function_args = args
+
 
     def __call__(self,observation):
         self.observation = observation
@@ -104,7 +129,7 @@ class sMJPWrapper(object):
     def _slice_1d(self,a_slice):
         assert isiterable(a_slice) is False, "we can only accept ints"
         s_curr = a_slice # current state
-        return self.state_function(s_curr,None,self.observation,
+        return self.state_function(s_curr,None,self.observation[self.observation_index],
                                    self.state_space,*self.state_function_args)
 
     def _slice_2d(self,a_slice):
@@ -114,7 +139,7 @@ class sMJPWrapper(object):
         if type(s_curr) is slice or type(s_next) is slice:
             raise TypeError("we can only accept integer inputs")
         # logic for functions based on current & next state (maybe 
-        self.state_function(s_curr,s_next,self.observation,
+        return self.state_function(s_curr,s_next,self.observation[self.observation_index],
                                    self.state_space,*self.state_function_args)
 
 """
@@ -129,19 +154,27 @@ A(delta w_i)[v_curr,v_next] = the _normalized_ (w.r.t. v_next, fixed delta w_i a
 
 
 # weibull hazard rate experiment
-def weibull_hazard_create_unset(shape_mat,scale_mat,state_curr,state_next):
-    shape = shape_mat[state_curr][state_next]
-    scale = scale_mat[state_curr][state_next]
-    rv = Weibull({'shape':shape,'scale':scale})
+def weibull_hazard_create_unset(shape_mat,scale_mat,state_space,state_curr,state_next):
+    assert state_curr in state_space, "must have the state in state space"
+    assert state_next in state_space, "must have the state in state space"
+    shape = shape_mat[state_curr-1][state_next-1]
+    scale = scale_mat[state_curr-1][state_next-1]
+    rv = Weibull({'shape':shape,'scale':scale},is_hazard_rate=True)
     return rv
 
 def enumerate_state_space(grid,states):
     mesh = np.meshgrid(grid,states)
-    state_space = np.c_[mesh[0].ravel(),mesh[1].ravel()]
+    state_space = np.c_[mesh[1].ravel(),mesh[0].ravel()]
     return state_space
-    
 
-
+def create_upperbound_scale(shape_mat,scale_mat,constant):
+    shapes = shape_mat.ravel()
+    const_mat = np.ones(len(shapes))
+    for index,shape in enumerate(shapes):
+        const_mat[index] = np.power(constant,1./shape)
+    const_mat = const_mat.reshape(scale_mat.shape)
+    scales_mat_tilde = scale_mat / const_mat
+    return scales_mat_tilde
 
 #
 # Testing.
@@ -154,71 +187,139 @@ def check_weibull():
     
     import matplotlib.pyplot as plt
     States = [1,2,3]
+    s_size = len(States)
     W = np.arange(20) # random_grid()
-    state_space = enumerate_state_space(W,States)
-    ss_size = len(state_space)
+    augmented_state_space = enumerate_state_space(W,States)
+    aug_ss_size = len(augmented_state_space)
 
-    # shape_mat = npr.uniform(0.6,3,ss_size**2).reshape((ss_size,ss_size))
-    shape_mat = np.ones((ss_size,ss_size))
-    scale_mat = np.ones((ss_size,ss_size)) 
-    weibull_hazard_create = partial(weibull_hazard_create_unset,shape_mat,scale_mat)
+    # shape_mat = npr.uniform(0.6,3,s_size**2).reshape((s_size,s_size))
+    shape_mat = np.ones((s_size,s_size)) * .8
+    scale_mat = np.ones((s_size,s_size)) 
+    weibull_hazard_create = partial(weibull_hazard_create_unset,shape_mat,scale_mat,States)
+    hazard_A = sMJPWrapper(smjp_hazard_functions,States,weibull_hazard_create)
 
-    hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create)
+    scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,2)
+    weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,\
+                                      scale_mat_tilde,States)
+    hazard_B = sMJPWrapper(smjp_hazard_functions,States,weibull_hazard_create_B)
 
     x_values = np.arange(0,20.1)
-    y_values = [hazard_A([x])[1,1] for x in x_values]
+    y_values_A = [hazard_A([x])[1,1] for x in x_values]
+    y_values_B = [hazard_B([x])[1,1] for x in x_values]
+    # y_values_ratio = [A([x])[60] / B([x])[60] for x in x_values] # ratio is constant b/c def B
+    print(y_values_A)
+    print(y_values_B)
 
-    plt.plot(x_values,y_values,'k+-')
+    plt.plot(x_values,y_values_A,'k+-',label="A")
+    plt.plot(x_values,y_values_B,'g+-',label="B")
+    # plt.plot(x_values,y_values_ratio,'m+-',label="A/B")
     w_rv = Weibull({'shape':1.0,'scale':1.0})
-    y_values = [w_rv.l(x) for x in x_values]
-
-    plt.plot(x_values,y_values,'g+-')
+    y_values_wb = [w_rv.l(x) for x in x_values]
+    # plt.plot(x_values,y_values_wb,'m+-',label="wb")
+    plt.legend()
+    plt.title("Inpecting Weibull Functions")
     plt.show()
 
-    print(hazard_A([5])[1,4])
-    print(hazard_A([2])[1,4])
+    print(hazard_A([5])[1,2])
+    print(hazard_A([2])[1,3])
     print(hazard_A([5])[1,3])
     print(hazard_A([2])[1,3])
     print(hazard_A([5])[1])
-    print(hazard_A([5])[6])
+    print(hazard_A([5])[2])
 
 
 def check_transition():
 
     States = [1,2,3]
-
     # reset each Gibbs iteration
+    s_size = len(States)
     W = np.arange(20) # random_grid()
-    state_space = enumerate_state_space(W,States)
-    ss_size = len(state_space)
+    augmented_state_space = enumerate_state_space(W,States)
+    aug_ss_size = len(augmented_state_space)
+          
+    shape_mat = npr.uniform(0.6,1.1,s_size**2).reshape((s_size,s_size))
+    # shape_mat = np.ones((s_size,s_size))
+    scale_mat = np.ones((s_size,s_size)) 
+    weibull_hazard_create_A = partial(weibull_hazard_create_unset,shape_mat,scale_mat,States)
 
-    shape_mat = npr.uniform(0.6,3,ss_size**2).reshape((ss_size,ss_size))
-    # shape_mat = np.ones((ss_size,ss_size))
-    scale_mat = np.ones((ss_size,ss_size)) 
-    weibull_hazard_create = partial(weibull_hazard_create_unset,shape_mat,scale_mat)
+    scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,2)
+    print(scale_mat_tilde[0,:5],scale_mat[0,:5])
+    weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,\
+                                      scale_mat_tilde,States)
 
-    hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create)
-    hazard_B = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create)
-    pi = sMJPWrapper(smjp_transition,state_space,hazard_A,hazard_B)
+    hazard_A = sMJPWrapper(smjp_hazard_functions,States,weibull_hazard_create_A)
+    hazard_B = sMJPWrapper(smjp_hazard_functions,States,weibull_hazard_create_B)
     
-    print(pi([0])[1,2])
+    print(hazard_A([1])[1,2])
+    print(hazard_B([1])[1,2])
+    print(hazard_A([1])[1])
+    print(hazard_B([1])[1])
+
+    pi = sMJPWrapper(smjp_transition,augmented_state_space,hazard_A,hazard_B)
+    
     import matplotlib.pyplot as plt
 
-    x_values = np.arange(0,ss_size)
-    print(x_values)
+    # plot over augmented_state_space
+    x_values = np.arange(0,aug_ss_size**2,1)
+    print("_1_")
+    y_values_1 = [pi([5])[i,j] for i in range(aug_ss_size) for j in range(aug_ss_size)]
+    y_values_h = [hazard_A([5])[i,j] for i in States for j in States]
+    # print("_2_")
+    # y_values_2 = [pi(2)[0,1] for x in state_space]
+    # print("_3_")
+    # y_values_3 = [pi(3)[1,1] for x in state_space]
+    # print("_4_")
+    # y_values_4 = [pi(4)[1,2] for x in state_space]
 
-    print(pi([1.])[0,0])
-    print("new")
-    y_values_00 = [pi([x])[0,0] for x in x_values]
-    y_values_01 = [pi([x])[0,1] for x in x_values]
-    y_values_11 = [pi([x])[1,1] for x in x_values]
-    y_values_12 = [pi([x])[1,2] for x in x_values]
+    # plt.plot(x_values,y_values_0,'k*',label='(0,0)')
+    plt.plot(x_values,y_values_1,'k*',label='(0,0)')
+    # plt.plot(x_values,y_values_h,'g+',label='(hazard)')
+    # plt.plot(x_values,y_values_2,'g+',label='(0,1)')
+    # plt.plot(x_values,y_values_3,'rx',label='(1,1)')
+    # plt.plot(x_values,y_values_4,'c^',label='(1,2)')
+    plt.title("Transition matrix")
+    plt.ylabel("Log-Likelihood")
+    plt.xlabel("State Values")
+    plt.legend(title="(Current,Next)")
+    print("alphas")
+    print(shape_mat)
+    print("hazardA")
+    print(y_values_h)
 
-    plt.plot(x_values,y_values_00,'k+-',label='00')
-    plt.plot(x_values,y_values_01,'g+-',label='01')
-    plt.plot(x_values,y_values_11,'r+-',label='11')
-    plt.plot(x_values,y_values_12,'c+-',label='12')
+    plt.show()
 
+    exit()
+
+    # plot over delta_w
+
+    """
+    Note that when we leave the state, the probability of leaving a state S at any time is the 
+    same. 
+    """
+    print(augmented_state_space)
+    x_values = W
+    print("_00_")
+    y_values_00 = -np.ma.log([pi([x])[0,2] for x in W]).filled(0)
+    print("_01_")
+    y_values_01 = -np.ma.log([pi([x])[0,3] for x in W]).filled(0)
+    print("_11_")
+    y_values_11 = -np.ma.log([pi([x])[5,6] for x in W]).filled(0)
+    print("_12_")
+    y_values_12 = -np.ma.log([pi([x])[23,29] for x in W]).filled(0)
+
+    print(y_values_00)
+    print(y_values_01)
+    print(y_values_11)
+    print(y_values_12)
+
+    plt.plot(x_values,y_values_00,'k*',label='(0,0)')
+    plt.plot(x_values,y_values_01,'g+',label='(0,1)')
+    plt.plot(x_values,y_values_11,'rx',label='(1,1)')
+    plt.plot(x_values,y_values_12,'c^',label='(1,2)')
+    plt.title("Transition matrix")
+    plt.ylabel("Likelihood")
+    plt.xlabel("Time Steps")
+    plt.legend(title="(Current,Next)")
     plt.show()
 
 
@@ -226,3 +327,5 @@ if __name__ == "__main__":
     
     # check_weibull() # passsed.
     check_transition()
+
+    
