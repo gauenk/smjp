@@ -15,5 +15,5 @@ from pkg.mh_mcmc import mh_mcmc
 from experiments import *
 
 if __name__ == "__main__":
-    experiment_1()
+    experiment_2()
     

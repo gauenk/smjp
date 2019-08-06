@@ -287,7 +287,6 @@ class WeibullDistribution(Distribution):
     
     def sample(self,n = 1,params = None,**kwargs):
         params = self.params_handler('load',params,**kwargs)
-        print(params)
         s = weibull_min.rvs(params.shape,loc=0,scale=params.scale,size=n)
         return s
 
@@ -296,6 +295,7 @@ class MultinomialDistribution(Distribution):
 
     def __init__(self,params,params_keywords=None,params_transforms=None,**kwargs):
         super().__init__('Multinomial')
+        self.prob_vector,self.translation = None,None
         self.params = edict(params)
         self.params_keywords = params_keywords
         self.params_transforms = params_transforms
@@ -306,28 +306,36 @@ class MultinomialDistribution(Distribution):
             self.params[key] = value
             if 'prob_vector' == key:
                 self.prob_vector = value
+            elif 'translation' == key:
+                self.translation = value
             else:
                 print("[{}] unknown parameter key [{}]".format(self.name,key))
                 exit()
     
     def log_likelihood(self,x_list,params = None, **kwargs):
         params = self.params_handler('load',params,**kwargs)
-        ll = 0
-        if type(x_list) is int:
+        p = params.prob_vector
+        n = len(p)
+        if isiterable(x_list) is False:
             x = x_list
-            p = params.prob_vector
-            n = len(p)
             """
             NOTE:
             we have just one event in one dimension for now 
             so the value happens to correspond to the index
             """
-            ll = np.log(p[x])
+            # if self.translation:
+            #     #x_index = self.translation.index(x)
+            #     ll = np.log(p[x])
+            # else:
+            ll = np.ma.log([p[x]]).filled(-np.infty)[0]
         else:
+            log_p = np.ma.log(p).filled(-np.infty)
+            log_x = np.ma.log(x_list).filled(-1)
+            ll = 0
             for x in x_list:
                 if x < 0: continue # only non-negative "x"
                 raise NotImplemented("Mulitnomial Likeilhood is not implemented")
-                ll += 0
+                ll += log_p[x]
         return ll
         
     def likelihood(self,x,params = None,**kwargs):
@@ -335,7 +343,22 @@ class MultinomialDistribution(Distribution):
     
     def sample(self,n = 1,params = None,**kwargs):
         params = self.params_handler('load',params,**kwargs)
-        s = npr.multinomial(n,params.prob_vector)
-        return s
+        if 'size' not in kwargs.keys():
+            size = n
+        if n == 1:
+            sample = np.where(npr.multinomial(1,params.prob_vector) == 1)[0][0]
+        elif size == n:
+            sample = np.where(npr.multinomial(1,params.prob_vector) == 1)[0]
+        else:
+            sample = npr.multinomial(n,params.prob_vector,size)            
+        if self.translation is not None:
+            if isiterable(sample):
+                tmp = []
+                for s in sample:
+                    tmp += [self.translation[s]]
+                sample = tmp
+            else:
+                sample = self.translation[sample]
+        return sample
 
 

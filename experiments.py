@@ -80,7 +80,7 @@ def experiment_1():
     state_alphabet = ['0','1','2',]
     observed_alphabet = ['0','1','2','3',]
     # data: ( |# of entries| x |size of element from observed space| )
-    data = np.array([2,3,1,0,0,0,0,1,1,2,2,2,2,2,2,1,2,3,1,1,])
+    data = np.array([2,3,1,2,2,3,1,1,1,2,2,2,2,2,2,1,2,3,1,1,])
 
     """
     NOTE [size of observed value space] :
@@ -94,13 +94,13 @@ def experiment_1():
     """
     
     pi_0 = MultinomialDistribution({'prob_vector': np.ones(3)/3})
-    path_length = len(data)
+    time_grid = np.arange(len(data))
     hmm_init = {'emission': HMMWrapper(emission,True), 
                 'transition': HMMWrapper(transition,False),
                 'data': data,
                 'state_alphabet': state_alphabet,
                 'pi_0': pi_0,
-                'path_length': path_length,
+                'time_grid': time_grid,
                 'sample_dimension': 1,
                 }
     hmm = HiddenMarkovModel([],**hmm_init)
@@ -138,63 +138,141 @@ def sample_alpha_parameters(number_of_states):
     return alphas
 
 
-def experiment_2():
+def experiment_2( likelihood_power = 1. ):
     """ 
-    Run experiment 1 from Rao-Teh alg.
+    Run "inner-loop" of experiment 1 from Rao-Teh alg. (loop is to generate plots)
     """
 
+    # ---------------
+    #
+    # sMJP parameters
+    #
+    # ---------------
+
+    state_space = [1,2,3]
+    obs_space = state_space
+    s_size = len(state_space)
+    time_length = 2 # for time t \in [0,time_length]
+    omega = 2
+
+    # experiment info
+    likelihood_power = 0.
+    number_of_observations = 3
+
+    # ------------------------------------------
     #
     # create hazard functions defining the sMJP
     #
+    # ------------------------------------------
 
-    state_space = [1,2,3]
-    s_size = len(state_space)
     shape_mat = npr.uniform(0.6,3.0,s_size**2).reshape((s_size,s_size))
     scale_mat = np.ones((s_size,s_size)) 
+    scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,omega)
+
+    # hazard A needs a sampler for the prior
     weibull_hazard_create_A = partial(weibull_hazard_create_unset,shape_mat,scale_mat,state_space)
-    scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,2)
+    weibull_hazard_sampler_A = partial(smjp_hazard_sampler_unset,state_space,weibull_hazard_create_A)
+
+    # hazard B
     weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,scale_mat_tilde,state_space)
-    hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A)
+
+    hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A,sampler=weibull_hazard_sampler_A)
     hazard_B = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_B)
 
+
+    # ------------------------------------------------------------
+    #
+    # instantiate the Poisson process to sample the thinned events
+    #
+    # ------------------------------------------------------------
+
+    pp_mean_params_A = {'shape':shape_mat,'scale':scale_mat}
+    poisson_process_A = PoissonProcess(state_space,None,hazard_A,pp_mean_params_A)
+    pp_mean_params_B = {'shape':shape_mat,'scale':scale_mat_tilde}
+    poisson_process_B = PoissonProcess(state_space,None,hazard_B,pp_mean_params_B)
+
+    # -------------------------------------------------------------------------
     #
     # generate observations from data
     #
+    # -------------------------------------------------------------------------
 
-    number_of_observations = 20
-    observation_space = state_space # just an arbitrary choice;
-    data = np.ones(number_of_observations)
+    # data
+    smjp_emission_create = partial(smjp_emission_multinomial_create_unset,state_space)
+    emission_sampler = sMJPWrapper(smjp_emission_sampler,state_space,smjp_emission_create)
+    emission_likelihood = sMJPWrapper(smjp_emission_likelihood,state_space,smjp_emission_create)
+    data_samples,data_times = create_toy_data(state_space,time_length,number_of_observations,emission_sampler)
+    data = sMJPDataWrapper(data=data_samples,time=data_times)
     
-    #
-    # pi_0 should actually picks from state_space; {1,2,3}
-    # in augmented_state_space terms, we pick only from {[1,0],[2,0],[3,0]}
-    #
-    pi_0 = MultinomialDistribution({'prob_vector': np.ones(ss_size)/ss_size})
+    # likelihood of obs
+    
+    emission_info = [emission_likelihood,poisson_process_B,likelihood_power,state_space]
+    smjp_emission = partial(smjp_emission_unset,*emission_info)
 
 
+    # ----------------------------------------------------------------------
     #
     # gibbs sampling for-loop
     #
+    # ----------------------------------------------------------------------
 
-    smjp_sampler_input = [W,state_space,hazard_A,hazard_B,emission,data,pi_0]
-
-    aggregation = {'W':[],'S':[],'prob':[]}
+    aggregate = {'W':[],'V':[],'T':[],'prob':[]}
+    aggregate_prior = {'V':[],'T':[]}
     number_of_samples = 1000
+    smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,data]
+    pi_0 = MultinomialDistribution({'prob_vector': np.ones(s_size)/s_size,\
+                                    'translation':state_space})
+    T,V = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
     for i in range(number_of_samples):
-        W = generate_random_grid()
-        samples,alphas,prob = sample_smjp_trajectory(*smjp_sampler_input)
-        aggregation['W'].append(W)
-        aggregation['S'].append(samples)
-        aggregation['prob'].append(prob)
-    
 
+        # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
+        W = sample_smjp_event_times(poisson_process_A,V,T)
+        V,T,prob = sample_smjp_trajectory_posterior(W,*smjp_sampler_input)
+        aggregate['W'].append(W)
+        aggregate['V'].append(V)
+        aggregate['T'].append(T)
+        aggregate['prob'].append(prob)
+        
+        # take some samples from the prior for de-bugging the mcmc sampler
+        _V,_T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
+        aggregate_prior['V'].append(_V)
+        aggregate_prior['T'].append(_T)
+        
+
+    # --------------------------------------------------
     #
-    # compute some evaluation metrics
-    #
-    
-    
+    # compute some metrics for evaluation of the sampler
+    # 
+    # -------------------------------------------------
+
+    # 1.) time per state: [# of samples, # of states] each entry is \sum of time in each state, 
+    times_per_state = compute_time_per_state(aggregate)
+    times_per_state_prior = compute_time_per_state(aggregate_prior)
+
+    # 2.) number of transitions: [# of samples, 1] each entry is the size of T
+    num_of_transitions = compute_num_of_transitions(aggregate)
+    num_of_transitions_prior = compute_num_of_transitions(aggregate_prior)
+
+    # compact the results for returning
+    metrics_posterior = {'state_times':[times_per_state],
+                         'transitions':[num_of_transitions]
+                         }
+    metrics_prior = {'state_times':[times_per_state],
+                     'transitions':[num_of_transitions]
+    }
+
+    return metrics_posterior,metrics_prior,aggregate,aggregate_prior
 
 
 
+def experiment_3():
+    """
+    Run experiment 1 from Rao-Teh
+    """
+    import matplotlib.pyplot as plt
+    aggregate_metrics = []
+    inv_temp_grid = np.arange(0,1,.1)
+    for inv_temp in inv_temp_grid:
+        m_posterior,m_prior,agg_posterior,agg_prior = experiment_2(inv_temp)
 
-
+        
