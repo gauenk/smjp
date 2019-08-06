@@ -28,7 +28,7 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
 
     # Note: we can return immmediately if the "l_next" is not possible.
     # -> this is common since l_next can only be {0, l_curr + delta_w }
-    print("smjp_pi",t_hold,l_next,l_curr,v_next,v_curr, l_next == t_hold)
+    # print("smjp_pi",t_hold,l_next,l_curr,v_next,v_curr, l_next == t_hold)
     if (l_next != 0) and (l_next != t_hold):
         return -np.infty
 
@@ -425,9 +425,9 @@ def sample_smjp_trajectory_prior(pi, pi_0, state_space, t_end, t_start = 0):
     ~~ Sampling from the prior ~~
     """
     # init the variables
-    v = []
-    w = []
-    v_curr,w_curr = pi_0.s(),t_start
+    v = [pi_0.s()]
+    w = [t_start]
+    v_curr,w_curr = v[0],w[0]
 
     # sample until the end of the time period
     while(w_curr < t_end):
@@ -554,8 +554,11 @@ def sample_smjp_trajectory_posterior(W,state_space,hazard_A,hazard_B,smjp_e,data
     hmm = HiddenMarkovModel([],**hmm_init)
     alphas,prob = hmm.likelihood() # only for dev.
     print(alphas)
+    # print(np.exp(alphas))
+    samples,t_samples = hmm.backward_sampling(alphas = alphas)
+    print(samples)
+    print(t_samples)
     exit()
-    samples = hmm.backward_sampling()
     return samples,alphas,prob
 
 
