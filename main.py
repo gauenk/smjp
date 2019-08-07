@@ -15,5 +15,6 @@ from pkg.mh_mcmc import mh_mcmc
 from experiments import *
 
 if __name__ == "__main__":
+    np.seterr(all='print')
     experiment_2()
     

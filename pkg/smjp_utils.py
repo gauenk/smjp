@@ -19,10 +19,10 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
     2. P(v_i,l_i | v_{i-1}, l_i, \delta w_i) 
     """
     log_probability = 0
-    delta_w = observation
+    time_next = observation
     v_curr,l_curr = augmented_state_space[s_curr_idx]
     v_next,l_next = augmented_state_space[s_next_idx]
-    t_hold = delta_w + l_curr
+    t_hold = time_next - l_curr
     # (T,?,?)
     # (F,T,T)
 
@@ -34,13 +34,12 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
     # Note: we can return immmediately if the "l_next" is not possible.
     # -> this is common since l_next can only be {0, l_curr + delta_w }
     # print("smjp_pi",t_hold,l_next,l_curr,v_next,v_curr, l_next == t_hold)
-    if (l_next != 0) and (l_next != t_hold):
+    if (l_next > time_next):
         return -np.infty
 
     # if we thin the current time-step, we can not transition state values.
-    if (l_next == t_hold) and (v_next != v_curr):
+    if (l_next < time_next) and (v_next != v_curr):
         return -np.infty
-
 
     # print(delta_w)
     # print(s_curr,s_next)
@@ -50,7 +49,7 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
     # P(l_i | l_{i-1}, \delta w_i)
     l_ratio = A(t_hold)[v_curr] / B(t_hold)[v_curr]
     assert l_ratio <= 1, "the ratio of hazard functions should be <= 1"
-    if l_next == 0:
+    if l_next == time_next:
         log_probability += np.ma.log( [l_ratio] ).filled(-np.infty)[0]
         # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) : note below is _not_ a probability.
         log_probability += np.ma.log([ A(t_hold)[v_curr,v_next] ]).filled(-np.infty)[0]
@@ -97,18 +96,8 @@ def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create):
         rate /= normalization_rate
         return rate
         
-def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
-                        s_curr,s_next,observation,aug_state_space):
-    """
-    P( x_i, \delta w_i | v_i, l_i )
-    =
-    P( x_i | v_i ) * P( \delta w_i | v_i, l_i )
-    """
 
-    x,delta_w = observation
-    # s_next not used; kept for compatability with the smjpwrapper
-    v_curr,l_curr = aug_state_space[s_curr]
-
+def compute_likelihood_obs(x,p_x,state_space,v_curr,inv_temp):
     # P(x | v_i )
     if isiterable(x):
         likelihood_x = 0
@@ -119,12 +108,30 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
         x_state_index = state_space.index(x)
         likelihood_x = p_x(x_state_index)[v_curr]
     likelihood_x = likelihood_x**inv_temp
+    return likelihood_x
+
+def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
+                        s_curr,s_next,observation,aug_state_space):
+    """
+    P( x_i, \delta w_i | v_i, l_i )
+    =
+    P( x_i | v_i ) * P( \delta w_i | v_i, l_i )
+    """
+
+    x,time_current = observation
+    # s_next not used; kept for compatability with the smjpwrapper
+    v_curr,l_curr = aug_state_space[s_curr]
+    t_hold = time_current - l_curr
+    
+    # P(x | v_i )
+    if len(x) == 0: 
+        # return no information when the observation is 
+        likelihood_x = 1
+    else:
+        likelihood_x = compute_likelihood_obs(x,p_x,state_space,v_curr,inv_temp)
 
     # P( \delta w_i | v_i, l_i )
-    likelihood_delta_w = p_w.l([l_curr, delta_w + l_curr],v_curr)
-    # print("@@")
-    # print(likelihood_delta_w)
-    # print("^^")
+    likelihood_delta_w = p_w.l([l_curr, time_current],v_curr)
 
     likelihood = likelihood_x * likelihood_delta_w
     return likelihood
@@ -350,7 +357,9 @@ class PoissonProcess(object):
         next_state_index = self.state_space.index(state)
         shape = self.mean_function_params['shape'][curr_state_index][next_state_index]
         scale = self.mean_function_params['scale'][curr_state_index][next_state_index]
-        mean = ( t_end**shape - t_start**shape ) / scale **shape
+        # print(scale,t_end,t_start,shape)
+        # print(scale**shape)
+        mean = ( t_end**shape - t_start**shape ) / scale**shape
         return mean
 
     def poisson_likelihood(self,mean,k):
@@ -389,18 +398,18 @@ def smjp_hazard_sampler_unset(tate_space,h_create,hold_time,current_state,next_s
 def enumerate_state_space(grid,states):
     if 0 not in grid: # it shouldn't be i think
         grid = [0] + grid
-    # create all the "delta w_i" terms
-    deltas = []
-    i = 0
-    for time_a in grid:
-        for time_b in grid:
-            diff = time_a - time_b
-            if diff > 0:
-                deltas += [diff]
-                i += 1
-    deltas += [0]
-    deltas = np.array(sorted(deltas))
-    mesh = np.meshgrid(deltas,states)
+    # # create all the "delta w_i" terms
+    # deltas = []
+    # i = 0
+    # for time_a in grid:
+    #     for time_b in grid:
+    #         diff = time_a - time_b
+    #         if diff > 0:
+    #             deltas += [diff]
+    #             i += 1
+    # deltas += [0]
+    # deltas = np.array(sorted(deltas))
+    mesh = np.meshgrid(grid,states)
     state_space = np.c_[mesh[1].ravel(),mesh[0].ravel()]
     return state_space
 
@@ -569,15 +578,15 @@ def sample_smjp_trajectory_posterior(W,state_space,hazard_A,hazard_B,smjp_e,data
     
     hmm = HiddenMarkovModel([],**hmm_init)
     alphas,prob = hmm.likelihood() # only for dev.
-    print(alphas)
-    print(augmented_state_space)
-    exit()
+    # print(alphas)
+    # print(augmented_state_space)
     # print(np.exp(alphas))
     samples,t_samples = hmm.backward_sampling(alphas = alphas)
-    print(samples)
-    print(t_samples)
-    exit()
-    return samples,alphas,prob
+    # print(samples)
+    # print(t_samples)
+    s_states = t_samples[0][:,0]
+    s_times = t_samples[0][:,1]
+    return s_states,s_times,prob
 
 
 #

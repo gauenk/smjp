@@ -226,11 +226,11 @@ def experiment_2( likelihood_power = 1. ):
     for i in range(number_of_samples):
 
         # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
-        # W = sample_smjp_event_times(poisson_process_A,V,T)
+        W = sample_smjp_event_times(poisson_process_A,V,T)
         # just for testing
-        W = np.arange(10)
-        while len(W) > 9:
-            W = sample_smjp_event_times(poisson_process_A,V,T)
+        # W = np.arange(10)
+        # while len(W) > 9:
+        #     W = sample_smjp_event_times(poisson_process_A,V,T)
         
         V,T,prob = sample_smjp_trajectory_posterior(W,*smjp_sampler_input)
         aggregate['W'].append(W)
@@ -242,6 +242,7 @@ def experiment_2( likelihood_power = 1. ):
         _V,_T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
         aggregate_prior['V'].append(_V)
         aggregate_prior['T'].append(_T)
+        print("i = {}".format(i))
         
 
     # --------------------------------------------------

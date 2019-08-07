@@ -105,14 +105,14 @@ def backward_sampling_hmm(*args,**kwargs):
         prob_transition = np.zeros(len(pi.state_space))
         #delta_w_enumeration = create_delta_w_enumeration(time_present,time_grid)
         future_sample = samples[:,time_index_future][0]
-        print(delta_w,pi.state_space[future_sample])
-        print('pl',prob_likelihood)
+        # print(delta_w,pi.state_space[future_sample])
+        # print('pl',prob_likelihood)
         for state_index in range(len(pi.state_space)):
-            l_trans = pi(delta_w)[state_index,future_sample]
+            l_trans = pi(time_future)[state_index,future_sample]
             prob_transition[state_index] += np.exp(l_trans)
             #for delta_w in delta_w_enumeration:
         # explainatory names
-        print('pt',prob_transition)
+        # print('pt',prob_transition)
         prob_state_given_future_state = prob_transition
         prob_state_given_data = prob_likelihood
         mn_prob = prob_state_given_data * prob_state_given_future_state
@@ -127,7 +127,7 @@ def backward_sampling_hmm(*args,**kwargs):
             print('pt',prob_state_given_future_state)
             exit()
         mn_prob /= np.sum(mn_prob)
-        print('mn',mn_prob)
+        # print('mn',mn_prob)
 
         s = np.where(npr.multinomial(num_of_samples,mn_prob) == 1)[0][0]
         samples[:,time_index_present] = s
@@ -190,17 +190,21 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
         delta_w_l = [delta_w]
         # delta_w_enumeration = create_delta_w_enumeration(time_next,time_grid)
         for delta_w in delta_w_l: # todo: remove this loop
-            obs = [O[time,time_next],delta_w]
+            obs = [O[time,time_next],time_next]
             for state_idx in range(num_of_states):
                 for state_prime_idx in range(num_of_states):
                     #print(pi(delta_w)[state_prime_idx,state_idx],e(obs)[state_idx])
                     # HMM: pi(t,t_next) = pi; does not depend on time difference
                     # sMJP: pi(t,t_next) =/= pi; depends on time difference
                     log_alpha = log_alphas[alpha_index-1,state_prime_idx]
-                    log_transition = pi(delta_w)[state_prime_idx,state_idx]
+                    log_transition = pi(time_next)[state_prime_idx,state_idx]
                     log_obs = np.ma.log([e(obs)[state_idx]]).filled(-np.infty)[0]
                     #print(log_alpha,log_transition,log_obs)
                     alpha_new = np.exp(log_alpha + log_transition + log_obs)
+                    if alpha_index == index_range[-1] and state_prime_idx == 0 and state_idx in [0,1] and False:
+                        print(log_alpha,log_transition,log_obs)
+                        print(np.sum([log_alpha,log_transition,log_obs]))
+
                     #print(alpha_new)
                     if state_prime_idx == 0 and state_idx == 1 and alpha_index > 2 and False:
                         print("[[state_prime_idx == 0 and state_idx == 1]]")
