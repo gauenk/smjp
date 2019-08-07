@@ -74,7 +74,7 @@ def backward_sampling_hmm(*args,**kwargs):
     num_of_steps = len(time_grid) # |W| - 1
     sample_dimension = kwargs['sample_dimension'] # not used in this B.S. function
     unnormalized_alphas = kwargs['alphas']
-    pi = kwargs['pi'] # state transition; "parameters" of HMM (rows x cols ~ origin x destination)
+    pi = kwargs['pi'] # state transition; "params" of HMM (rows x cols ~ origin x destination)
     log_alphas = unnormalized_alphas
     # alphas = unnormalized_alphas / np.sum(unnormalized_alphas,axis=0)
     samples = np.zeros((num_of_samples,num_of_steps),dtype=np.int)
@@ -89,30 +89,45 @@ def backward_sampling_hmm(*args,**kwargs):
     time_iter = reversed(time_grid[:-1])
     #print([i for i in index_iter])
     # print(time_grid)
+    i = 0
     for time_index_future,time_present in zip(index_iter,time_iter):
+        i += 1
         time_index_present = time_index_future - 1
         time_future = time_grid[time_index_future]
-        # tau = time_future - time_present
-        # print(tau,time_future,time_present)
-        alpha_at_future = np.exp(log_alphas[time_index_future,:])
-        # p( q_t | data_{1:t} )
+        delta_w = time_future - time_present
+
+        # print(delta_w,time_future,time_present)
+        alpha_at_future = np.exp(log_alphas[time_index_future-1,:])
+        # p( q_t | data_{1:t} ) \propto p( q_t, data_{1:t} )
         prob_likelihood = alpha_at_future / np.sum(alpha_at_future)
 
         #  p( q_t | q_{t+1} ) for each (delta_w,state_current)
         prob_transition = np.zeros(len(pi.state_space))
-        delta_w_enumeration = create_delta_w_enumeration(time_present,time_grid)
+        #delta_w_enumeration = create_delta_w_enumeration(time_present,time_grid)
         future_sample = samples[:,time_index_future][0]
+        print(delta_w,pi.state_space[future_sample])
+        print('pl',prob_likelihood)
         for state_index in range(len(pi.state_space)):
-            for delta_w in delta_w_enumeration:
-                l_trans = pi(delta_w)[state_index,future_sample]
-                prob_transition[state_index] += np.exp(l_trans)
-
+            l_trans = pi(delta_w)[state_index,future_sample]
+            prob_transition[state_index] += np.exp(l_trans)
+            #for delta_w in delta_w_enumeration:
         # explainatory names
+        print('pt',prob_transition)
         prob_state_given_future_state = prob_transition
         prob_state_given_data = prob_likelihood
         mn_prob = prob_state_given_data * prob_state_given_future_state
+        if np.all(np.isclose(mn_prob,0)):
+            print("==> ~~mn_prob is zero~~ <==")
+            print('i',i)
+            print("future_state",pi.state_space[future_sample])
+            print('s',samples)
+            print("tlen",len(time_grid))
+            print('ti',time_index_present,time_present)
+            print('pl',prob_state_given_data)
+            print('pt',prob_state_given_future_state)
+            exit()
         mn_prob /= np.sum(mn_prob)
-        # print('mn',mn_prob)
+        print('mn',mn_prob)
 
         s = np.where(npr.multinomial(num_of_samples,mn_prob) == 1)[0][0]
         samples[:,time_index_present] = s
@@ -172,8 +187,9 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
         # print(alpha_index)
         time_next = time_grid[alpha_index] # update the next time.
         delta_w = time_next - time 
-        delta_w_enumeration = create_delta_w_enumeration(time_next,time_grid)
-        for delta_w in delta_w_enumeration:
+        delta_w_l = [delta_w]
+        # delta_w_enumeration = create_delta_w_enumeration(time_next,time_grid)
+        for delta_w in delta_w_l: # todo: remove this loop
             obs = [O[time,time_next],delta_w]
             for state_idx in range(num_of_states):
                 for state_prime_idx in range(num_of_states):

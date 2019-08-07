@@ -266,6 +266,8 @@ def experiment_2( likelihood_power = 1. ):
                      'transitions':[num_of_transitions]
     }
 
+    # computing effective sample size
+
     return metrics_posterior,metrics_prior,aggregate,aggregate_prior
 
 

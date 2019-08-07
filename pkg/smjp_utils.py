@@ -26,6 +26,11 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
     # (T,?,?)
     # (F,T,T)
 
+    # print("dw",delta_w,"th",t_hold,"l_n",l_next,"l_c",l_curr)
+    # print(v_curr,v_next)
+    # print((l_next != 0),(l_next != t_hold))
+    # print((l_next == t_hold), (v_next != v_curr))
+
     # Note: we can return immmediately if the "l_next" is not possible.
     # -> this is common since l_next can only be {0, l_curr + delta_w }
     # print("smjp_pi",t_hold,l_next,l_curr,v_next,v_curr, l_next == t_hold)
@@ -384,7 +389,18 @@ def smjp_hazard_sampler_unset(tate_space,h_create,hold_time,current_state,next_s
 def enumerate_state_space(grid,states):
     if 0 not in grid: # it shouldn't be i think
         grid = [0] + grid
-    mesh = np.meshgrid(grid,states)
+    # create all the "delta w_i" terms
+    deltas = []
+    i = 0
+    for time_a in grid:
+        for time_b in grid:
+            diff = time_a - time_b
+            if diff > 0:
+                deltas += [diff]
+                i += 1
+    deltas += [0]
+    deltas = np.array(sorted(deltas))
+    mesh = np.meshgrid(deltas,states)
     state_space = np.c_[mesh[1].ravel(),mesh[0].ravel()]
     return state_space
 
@@ -554,6 +570,8 @@ def sample_smjp_trajectory_posterior(W,state_space,hazard_A,hazard_B,smjp_e,data
     hmm = HiddenMarkovModel([],**hmm_init)
     alphas,prob = hmm.likelihood() # only for dev.
     print(alphas)
+    print(augmented_state_space)
+    exit()
     # print(np.exp(alphas))
     samples,t_samples = hmm.backward_sampling(alphas = alphas)
     print(samples)
