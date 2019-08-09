@@ -48,6 +48,8 @@ class HiddenMarkovModel(object):
                   'time_grid': self.time_grid,
                   'sample_dimension': self.sample_dimension,
                   'alphas': alphas,
+                  'e': self.emission,
+                  'O': self.data,
                   'pi': self.transition,
         }
         samples,t_samples = backward_sampling_hmm([],**kwargs)
@@ -64,6 +66,25 @@ class HiddenMarkovModel(object):
         alphas,output_prob,viterbi,backpath = likelihood_and_decoding_hmm([],**kwargs)
         return alphas,output_prob,viterbi,backpath
 
+def compute_beta_term(pi,beta_next,e,obs,time_c,time_n):
+    ss_size = len(pi.state_space)
+    betas = np.zeros(ss_size)
+    for state_c in range(ss_size):
+        for state_n in range(ss_size):
+            likelihood_data = e(obs)[state_n]
+            transition = np.exp(pi([time_c,time_n])[state_c,state_n])
+            beta_n = beta_next[state_n]
+            # print(likelihood_data,transition,beta_n)
+            betas[state_c] += transition*likelihood_data*beta_n
+    return betas
+
+def compute_transition_vector(pi,state_n,time_c,time_n):
+    ss_size = len(pi.state_space)
+    transition = np.zeros(ss_size)
+    for state_c in range(ss_size):
+        transition[state_c] = np.exp(pi([time_c,time_n])[state_c,state_n])
+    return transition
+
 def backward_sampling_hmm(*args,**kwargs):
     """
     sampling a trajectory from T to 1 given the alphas from "forward"
@@ -74,63 +95,104 @@ def backward_sampling_hmm(*args,**kwargs):
     num_of_steps = len(time_grid) # |W| - 1
     sample_dimension = kwargs['sample_dimension'] # not used in this B.S. function
     unnormalized_alphas = kwargs['alphas']
+    O = kwargs['O']
+    e = kwargs['e']
     pi = kwargs['pi'] # state transition; "params" of HMM (rows x cols ~ origin x destination)
     log_alphas = unnormalized_alphas
+    betas = np.zeros(log_alphas.shape)
     # alphas = unnormalized_alphas / np.sum(unnormalized_alphas,axis=0)
     samples = np.zeros((num_of_samples,num_of_steps),dtype=np.int)
 
     # init; sample from P(q_T | data_{1:T} )
     mn_prob = np.exp(log_alphas[-1,:]) / np.sum(np.exp(log_alphas[-1,:]))
     samples[:,-1] = np.where(npr.multinomial(num_of_samples,mn_prob) == 1)[0][0]
+    betas[:,-1] = np.ones(len(betas[:,-1]))
 
     # run loop for (T-1, 1) out of (T,1); e.g. T is not included;
     # note: the range() is "-2" since python is zero indexed.
     index_iter = reversed(range(1,len(time_grid)))
     time_iter = reversed(time_grid[:-1])
     #print([i for i in index_iter])
+    # print("time_grid")
     # print(time_grid)
     i = 0
-    for time_index_future,time_present in zip(index_iter,time_iter):
+    for time_index_next,time_current in zip(index_iter,time_iter):
         i += 1
-        time_index_present = time_index_future - 1
-        time_future = time_grid[time_index_future]
-        delta_w = time_future - time_present
+        time_index_current = time_index_next - 1
+        time_next = time_grid[time_index_next]
+        delta_w = time_next - time_current
+        #print(time_current,time_next)
+        obs = [O[time_current,time_next],time_next]
 
-        # print(delta_w,time_future,time_present)
-        alpha_at_future = np.exp(log_alphas[time_index_future-1,:])
-        # p( q_t | data_{1:t} ) \propto p( q_t, data_{1:t} )
-        prob_likelihood = alpha_at_future / np.sum(alpha_at_future)
+        # sample_{t+1} [get the previous sample index]
+        next_sample = samples[:,time_index_next][0]
 
-        #  p( q_t | q_{t+1} ) for each (delta_w,state_current)
-        prob_transition = np.zeros(len(pi.state_space))
-        #delta_w_enumeration = create_delta_w_enumeration(time_present,time_grid)
-        future_sample = samples[:,time_index_future][0]
-        # print(delta_w,pi.state_space[future_sample])
-        # print('pl',prob_likelihood)
-        for state_index in range(len(pi.state_space)):
-            l_trans = pi(time_future)[state_index,future_sample]
-            prob_transition[state_index] += np.exp(l_trans)
-            #for delta_w in delta_w_enumeration:
-        # explainatory names
-        # print('pt',prob_transition)
-        prob_state_given_future_state = prob_transition
-        prob_state_given_data = prob_likelihood
-        mn_prob = prob_state_given_data * prob_state_given_future_state
-        if np.all(np.isclose(mn_prob,0)):
+        # compute beta terms
+        beta_term_args = [pi,betas[time_index_next,:],e,obs,time_current,time_next]
+        betas[time_index_current,:] = compute_beta_term(*beta_term_args)
+        beta_n = betas[time_index_next,next_sample]
+
+        # alpha_{t+1}(next_sample), a scalar
+        alpha_at_next = np.exp(log_alphas[time_index_next,:])
+        alpha_n = alpha_at_next[next_sample]
+
+        # alpha_t [normalized]
+        alpha_at_current = np.exp(log_alphas[time_index_current,:])
+        alpha_c = alpha_at_current / np.sum(alpha_at_current)
+
+        # transition vector
+        transition = compute_transition_vector(pi,next_sample,time_current,time_next)
+        
+        # likelihood of data, a scalar
+        likelihood_data = e(obs)[next_sample]
+
+        # altogether.
+        # sampling_prob = (alpha_c * transition) * (likelihood_data) * (beta_n / alpha_n)
+        sampling_prob = (alpha_c * transition) #* (likelihood_data) * (beta_n / alpha_n)
+        
+        # #  p( q_t | q_{t+1} ) for each (delta_w,state_current)
+        # prob_transition = np.zeros(len(pi.state_space))
+        # #delta_w_enumeration = create_delta_w_enumeration(time_current,time_grid)
+
+        # # print(delta_w,pi.state_space[next_sample])
+        # # print('pl',prob_likelihood)
+        # for state_index in range(len(pi.state_space)):
+        #     l_trans = pi(time_next)[state_index,next_sample]
+        #     prob_transition[state_index] += np.exp(l_trans)
+        #     #for delta_w in delta_w_enumeration:
+        # # explainatory names
+        # # print('pt',prob_transition)
+        # prob_state_given_next_state = prob_transition
+        # prob_state_given_data = prob_likelihood
+        # mn_prob = prob_state_given_data * prob_state_given_next_state
+        mn_prob = sampling_prob
+
+        if np.all(np.isclose(mn_prob,0)) or np.any(np.isnan(mn_prob)):
             print("==> ~~mn_prob is zero~~ <==")
+            print('time_grid',time_grid)
             print('i',i)
-            print("future_state",pi.state_space[future_sample])
+            print("next_state",pi.state_space[next_sample])
             print('s',samples)
             print("tlen",len(time_grid))
-            print('ti',time_index_present,time_present)
-            print('pl',prob_state_given_data)
-            print('pt',prob_state_given_future_state)
+            print('ti',time_index_current,time_current)
+            print('beta_n',beta_n)
+            print('alpha_n',alpha_n)
+            print('l_alpha_c',log_alphas[time_index_current,:])
+            print('alpha_c',alpha_c)
+            print('transition',transition)
+            print('likelihood_data',likelihood_data)
+            print('sampling_prob',sampling_prob)
             exit()
         mn_prob /= np.sum(mn_prob)
+        time_current_p,time_next_p = round(time_current,3),round(time_next,3)
+        time_str = "({},{})".format(time_current_p,time_next_p)
+        # print(pi.state_space[next_sample],time_str,mn_prob[next_sample])
         # print('mn',mn_prob)
+        # print('trans',transition)
+        # print('alpha_c',alpha_c)
 
         s = np.where(npr.multinomial(num_of_samples,mn_prob) == 1)[0][0]
-        samples[:,time_index_present] = s
+        samples[:,time_index_current] = s
     
     # translate the sample back
     t_samples = [None for _ in range(len(samples))]
@@ -167,7 +229,7 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
     time_next = time_grid[0] # the first point in the time_grid, |W|, is _not_ zero in general.
     # but it is zero currently.... not great.
     for state_idx in range(num_of_states):
-        obs = [O[0,time_next],time_next-0]
+        obs = [O[0,time_next],time_next]
         log_alphas[0,state_idx] = np.ma.log([init_probs.l(state_idx)]).filled(-np.infty) +\
                                   np.ma.log([e(obs)[state_idx]]).filled(-np.infty)
         log_viterbi[0,state_idx] = np.ma.log([init_probs.l(state_idx)]).filled(-np.infty) +\
@@ -185,19 +247,19 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
     print(len(index_range),len(time_grid[1:-1]),len(time_grid[0:-1]),len(time_grid))
     for alpha_index,time in zip(index_range,time_grid[0:-1]): # {w_0,...,w_{|W|-1}}
         # print(alpha_index)
-        time_next = time_grid[alpha_index] # update the next time.
-        delta_w = time_next - time 
+        time_n = time_grid[alpha_index] # update the next time.
+        delta_w = time_n - time 
         delta_w_l = [delta_w]
-        # delta_w_enumeration = create_delta_w_enumeration(time_next,time_grid)
+        # delta_w_enumeration = create_delta_w_enumeration(time_n,time_grid)
         for delta_w in delta_w_l: # todo: remove this loop
-            obs = [O[time,time_next],time_next]
+            obs = [O[time,time_n],time_n]
             for state_idx in range(num_of_states):
                 for state_prime_idx in range(num_of_states):
                     #print(pi(delta_w)[state_prime_idx,state_idx],e(obs)[state_idx])
                     # HMM: pi(t,t_next) = pi; does not depend on time difference
                     # sMJP: pi(t,t_next) =/= pi; depends on time difference
                     log_alpha = log_alphas[alpha_index-1,state_prime_idx]
-                    log_transition = pi(time_next)[state_prime_idx,state_idx]
+                    log_transition = pi([time,time_n])[state_prime_idx,state_idx]
                     log_obs = np.ma.log([e(obs)[state_idx]]).filled(-np.infty)[0]
                     #print(log_alpha,log_transition,log_obs)
                     alpha_new = np.exp(log_alpha + log_transition + log_obs)
@@ -211,7 +273,7 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
                         print(log_alpha,log_transition,log_obs)
                         print(log_alphas[alpha_index-1,:])
                         print(log_alphas[alpha_index-1,state_prime_idx])
-                        print('dw',delta_w,time,time_next)
+                        print('dw',delta_w,time,time_n)
                         print(pi.state_space[state_prime_idx])
                         print(pi.state_space[state_idx])
                         print("==========================")

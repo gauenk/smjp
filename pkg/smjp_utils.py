@@ -5,6 +5,8 @@ from pkg.distributions import WeibullDistribution as Weibull
 from pkg.distributions import MultinomialDistribution as Multinomial
 from pkg.utils import *
 from pkg.hidden_markov_model import HMMWrapper,HiddenMarkovModel
+from pkg.fast_hmm import fast_HiddenMarkovModel
+from pkg.timer import Timer
 
 def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B):
     """
@@ -19,10 +21,13 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
     2. P(v_i,l_i | v_{i-1}, l_i, \delta w_i) 
     """
     log_probability = 0
-    time_next = observation
+    time_current,time_next = observation
     v_curr,l_curr = augmented_state_space[s_curr_idx]
     v_next,l_next = augmented_state_space[s_next_idx]
     t_hold = time_next - l_curr
+
+    if t_hold < 0:
+        return -np.infty
     # (T,?,?)
     # (F,T,T)
 
@@ -31,14 +36,54 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
     # print((l_next != 0),(l_next != t_hold))
     # print((l_next == t_hold), (v_next != v_curr))
 
+    # we can't hold for negative time; this happens when
+    # l_next > time_next (good to go) 
+    # ~but~
+    # l_current > time_next (current state is greater than current time)
+    # --> this only happens in backward-sampling since we can sample "backward in time"
+    # resulting in l_currents that are actually greater than the time we are at.
+    """
+    Needed when saying: "l_curr" is the time ~of~ the most recent jump
+    
+    This does not happen in "forward-filter" since we consider each state in sequence with
+    "time_next". Iow, we have l_curr <= time_next since we have the "if l_next < time_next"
+    condition. 
+
+    The key, l_next becomes l_curr.
+
+    For backward sampling, we the case when we sample a time futher in the past
+    than the current timestep. This means the sample, which becomes l_next on the next 
+    iteration, can be further in the past than the current time.
+
+    The key, l_curr becomes l_next.
+
+    The issue with allowing is that we allow impossible transitions to occur. 
+    For example, at time (t) we might sample (v,t-2). 
+    This says: the most recent transition was at time "t-2" and it was to state "v".
+    Then at time (t-1), we look at the future state of (v,t-2). If we allow transitions
+    at time (t-1), then the sampled state of (v,t-2) is a lie. Without the following 
+    condition, that is exactly what happens.
+    """
+    if (l_curr > l_next): 
+        return -np.infty
+    # if (l_curr == l_next) then we've thinned an event. This is okay.
+
+    # says: we can not "jump" into the past [very confident]
+    # if we are holding a state, we can not change the most recent jump time.
+    # if we do change the jump time, it must happen ~not before~ time_current
+    if (l_next <= time_current) and (s_curr_idx != s_next_idx):
+        return -np.infty
+    
+
     # Note: we can return immmediately if the "l_next" is not possible.
     # -> this is common since l_next can only be {0, l_curr + delta_w }
     # print("smjp_pi",t_hold,l_next,l_curr,v_next,v_curr, l_next == t_hold)
     if (l_next > time_next):
         return -np.infty
 
-    # if we thin the current time-step, we can not transition state values.
-    if (l_next < time_next) and (v_next != v_curr):
+    # if we thin the current time-step,
+    # 1.) we can not transition state values.
+    if (l_next < time_next) and (s_curr_idx != s_next_idx):
         return -np.infty
 
     # print(delta_w)
@@ -131,6 +176,10 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
         likelihood_x = compute_likelihood_obs(x,p_x,state_space,v_curr,inv_temp)
 
     # P( \delta w_i | v_i, l_i )
+    if time_current < 0:
+        print(x,time_current,v_curr,l_curr,t_hold)
+        print(state_space)
+        print(aug_state_space)
     likelihood_delta_w = p_w.l([l_curr, time_current],v_curr)
 
     likelihood = likelihood_x * likelihood_delta_w
@@ -317,6 +366,9 @@ class PoissonProcess(object):
         # print('tau',tau)
         samples = []
         for state in self.state_space:
+            if tau < 0:
+                print(tau)
+                print(self.state_space)
             mean = self.mean_function( 0, tau, current_state, state )
             # print('mean',mean)
             N = npr.poisson( lam = mean )
@@ -427,11 +479,15 @@ def create_upperbound_scale(shape_mat,scale_mat,constant):
 # sampling the random grid via a Poisson process
 # 
 
-def sample_smjp_event_times(poisson_process,V,T):
+def sample_smjp_event_times(poisson_process,V,T,time_length):
     W = None
     # sample thinned events
     v_curr,t_curr = V[0],T[0]
     T_tilde_list = []
+    if False:
+        print("-=-=-=-DOWN-=-=-=-")
+        print(np.c_[V,T])
+        print("-=-=-=- UP -=-=-=-")
     for v_next,t_next in zip(V[1:],T[1:]):
         interval = [t_curr,t_next]
         T_tilde_list += [poisson_process.sample(interval,v_curr)]
@@ -464,22 +520,23 @@ def sample_smjp_trajectory_prior(pi, pi_0, state_space, t_end, t_start = 0):
 
         # take the smallest hold-time and move to that state
         t_hold = np.min(hold_time_samples)
-        w_next = w_curr + t_hold
         v_next = state_space[np.argmin(hold_time_samples)]
+        w_next = w_curr + t_hold
 
         # append values to the vectors
-        w += [w_next]
         v += [v_next]
+        w += [w_next]
 
         # update
-        w_curr = w_next
         v_curr = v_next
+        w_curr = w_next
+
         
     # correct final values
-    w[-1] = t_end
     v[-1] = v[-2]
+    w[-1] = t_end
 
-    return w,v
+    return v,w
 
 def sample_smjp_trajectory_prior_2(A, B, pi_0, pi, t_start = 0):
     """
@@ -526,7 +583,7 @@ def sample_smjp_trajectory_prior_2(A, B, pi_0, pi, t_start = 0):
 # posterior smjp trajectory sampler; main function in Gibbs loop
 #
 
-def sample_smjp_trajectory_posterior(W,state_space,hazard_A,hazard_B,smjp_e,data):
+def sample_smjp_trajectory_posterior(W,data,state_space,hazard_A,hazard_B,smjp_e,t_end):
     # we might need to mangle the "data" to align with the time intervals;
     # 1.) what about no observations in a given time? O[t_i,t_{i+1}] = []
     # 2.) what about multiple obs for a given time? O[t_i,t_{i+1}] = [o_k,o_k+1,...]
@@ -559,7 +616,7 @@ def sample_smjp_trajectory_posterior(W,state_space,hazard_A,hazard_B,smjp_e,data
     #
     # ----------------------------------------------------------------------
 
-    pi = sMJPWrapper(smjp_transition,augmented_state_space,hazard_A,hazard_B)
+    pi = sMJPWrapper(smjp_transition,augmented_state_space,hazard_A,hazard_B,obs_is_iterable=True)
 
     # ----------------------------------------------------------------------
     #
@@ -576,22 +633,66 @@ def sample_smjp_trajectory_posterior(W,state_space,hazard_A,hazard_B,smjp_e,data
                 'sample_dimension': 1,
                 }
     
-    hmm = HiddenMarkovModel([],**hmm_init)
-    alphas,prob = hmm.likelihood() # only for dev.
-    # print(alphas)
-    # print(augmented_state_space)
-    # print(np.exp(alphas))
+    hmm = fast_HiddenMarkovModel([],**hmm_init)
+    alphas,prob = hmm.likelihood() 
     samples,t_samples = hmm.backward_sampling(alphas = alphas)
+
+    # get unique thinned values
+    thinned_samples = np.unique(t_samples[0],axis=0) # ignored thinned samples
+    thinned_samples = thinned_samples[thinned_samples[:,1].argsort()] # its out of order now.
+    
+    # ensure [t_end] is included; copy the findal state to time t_end
+    thinned_samples = include_endpoint_in_thinned_samples(thinned_samples,t_end)
+
+    print(thinned_samples)
     # print(samples)
     # print(t_samples)
-    s_states = t_samples[0][:,0]
-    s_times = t_samples[0][:,1]
+    s_states = thinned_samples[:,0]
+    s_times = thinned_samples[:,1]
     return s_states,s_times,prob
 
 
 #
 # Misc
 #
+
+
+def include_endpoint_in_thinned_samples(thinned_samples,t_end):
+    """
+    needing this might be wrong...
+    """
+    if np.isclose(thinned_samples[-1,1],t_end):
+        return thinned_samples
+    else:
+        final_state,final_time = thinned_samples[-1,:]
+        end = np.array([final_state,t_end])[np.newaxis,:]
+        complete_thinned_samples = np.r_[thinned_samples,end]
+        return complete_thinned_samples
+
+def sample_data_posterior(V,T,state_space,time_length,num_obs,emission_sampler):
+    ss = len(state_space)
+    # print(V,T)
+    obs_times = T
+    # subset randomly
+    obs_times = np.sort(npr.choice(obs_times,size=num_obs,replace=False))
+    
+    # -- create the posterior multinomial sampling distribution --
+    mn_prob = np.ones(ss) / len(state_space) 
+    for state_index,state in enumerate(state_space):
+        n = np.sum(V == state)
+        mn_prob[state_index] += n
+    mn_prob /= np.sum(mn_prob)
+    states_index = np.where(npr.multinomial(1,mn_prob,num_obs) == 1)[1]
+    data = []
+    for state_index in states_index:
+        state = state_space[state_index]
+        # STILL: this is pretty un-necessary here since its 100 v 1 [emission _not_ posterior] 
+        data += [emission_sampler(0)[state]] 
+    data_samples,data_times = data,obs_times
+    # print(data,obs_times)
+    data = sMJPDataWrapper(data=data_samples,time=data_times)
+    print(data)
+    return data
 
 def create_toy_data(state_space,time_length,number_of_observations,emission_sampler):
     obs_times = sorted(npr.uniform(0,time_length,number_of_observations)) # random times
@@ -613,155 +714,7 @@ def smjp_emission_multinomial_create_unset(state_space,state_curr):
     return distribution
     
     
-#
-# Testing.
-#
-
-
-
-def check_weibull():
-    # the two plots should overlap
-    
-    import matplotlib.pyplot as plt
-    States = [1,2,3]
-    s_size = len(States)
-    W = np.arange(20) # random_grid()
-    augmented_state_space = enumerate_state_space(W,States)
-    aug_ss_size = len(augmented_state_space)
-
-    # shape_mat = npr.uniform(0.6,3,s_size**2).reshape((s_size,s_size))
-    shape_mat = np.ones((s_size,s_size)) * .8
-    scale_mat = np.ones((s_size,s_size)) 
-    weibull_hazard_create = partial(weibull_hazard_create_unset,shape_mat,scale_mat,States)
-    hazard_A = sMJPWrapper(smjp_hazard_functions,States,weibull_hazard_create)
-
-    scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,2)
-    weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,\
-                                      scale_mat_tilde,States)
-    hazard_B = sMJPWrapper(smjp_hazard_functions,States,weibull_hazard_create_B)
-
-    x_values = np.arange(0,20.1)
-    y_values_A = [hazard_A(x)[1,1] for x in x_values]
-    y_values_B = [hazard_B(x)[1,1] for x in x_values]
-    # y_values_ratio = [A([x])[60] / B([x])[60] for x in x_values] # ratio is constant b/c def B
-    print(y_values_A)
-    print(y_values_B)
-
-    plt.plot(x_values,y_values_A,'k+-',label="A")
-    plt.plot(x_values,y_values_B,'g+-',label="B")
-    # plt.plot(x_values,y_values_ratio,'m+-',label="A/B")
-    w_rv = Weibull({'shape':1.0,'scale':1.0})
-    y_values_wb = [w_rv.l(x) for x in x_values]
-    # plt.plot(x_values,y_values_wb,'m+-',label="wb")
-    plt.legend()
-    plt.title("Inpecting Weibull Functions")
-    plt.show()
-
-    print(hazard_A(5)[1,2])
-    print(hazard_A(2)[1,3])
-    print(hazard_A(5)[1,3])
-    print(hazard_A(2)[1,3])
-    print(hazard_A(5)[1])
-    print(hazard_A(5)[2])
-
-
-def check_transition():
-
-    States = [1,2,3]
-    # reset each Gibbs iteration
-    s_size = len(States)
-    W = np.arange(20) # random_grid()
-    augmented_state_space = enumerate_state_space(W,States)
-    aug_ss_size = len(augmented_state_space)
-          
-    shape_mat = npr.uniform(0.6,1.1,s_size**2).reshape((s_size,s_size))
-    # shape_mat = np.ones((s_size,s_size))
-    scale_mat = np.ones((s_size,s_size)) 
-    weibull_hazard_create_A = partial(weibull_hazard_create_unset,shape_mat,scale_mat,States)
-
-    scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,2)
-    print(scale_mat_tilde[0,:5],scale_mat[0,:5])
-    weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,scale_mat_tilde,States)
-
-    hazard_A = sMJPWrapper(smjp_hazard_functions,States,weibull_hazard_create_A)
-    hazard_B = sMJPWrapper(smjp_hazard_functions,States,weibull_hazard_create_B)
-    
-    print(hazard_A(1)[1,2])
-    print(hazard_B(1)[1,2])
-    print(hazard_A(1)[1])
-    print(hazard_B(1)[1])
-
-    pi = sMJPWrapper(smjp_transition,augmented_state_space,hazard_A,hazard_B)
-    
-    import matplotlib.pyplot as plt
-
-    # plot over augmented_state_space
-    x_values = np.arange(0,aug_ss_size**2,1)
-    print("_1_")
-    y_values_1 = [pi(5)[i,j] for i in range(aug_ss_size) for j in range(aug_ss_size)]
-    y_values_h = [hazard_A(5)[i,j] for i in States for j in States]
-    # print("_2_")
-    # y_values_2 = [pi(2)[0,1] for x in state_space]
-    # print("_3_")
-    # y_values_3 = [pi(3)[1,1] for x in state_space]
-    # print("_4_")
-    # y_values_4 = [pi(4)[1,2] for x in state_space]
-
-    # plt.plot(x_values,y_values_0,'k*',label='(0,0)')
-    plt.plot(x_values,y_values_1,'k*',label='(0,0)')
-    # plt.plot(x_values,y_values_h,'g+',label='(hazard)')
-    # plt.plot(x_values,y_values_2,'g+',label='(0,1)')
-    # plt.plot(x_values,y_values_3,'rx',label='(1,1)')
-    # plt.plot(x_values,y_values_4,'c^',label='(1,2)')
-    plt.title("Transition matrix")
-    plt.ylabel("Log-Likelihood")
-    plt.xlabel("State Values")
-    plt.legend(title="(Current,Next)")
-    print("alphas")
-    print(shape_mat)
-    print("hazardA")
-    print(y_values_h)
-
-    plt.show()
-
-    exit()
-
-    # plot over delta_w
-
-    """
-    Note that when we leave the state, the probability of leaving a state S at any time is the 
-    same. 
-    """
-    print(augmented_state_space)
-    x_values = W
-    print("_00_")
-    y_values_00 = -np.ma.log([pi(x)[0,2] for x in W]).filled(0)
-    print("_01_")
-    y_values_01 = -np.ma.log([pi(x)[0,3] for x in W]).filled(0)
-    print("_11_")
-    y_values_11 = -np.ma.log([pi(x)[5,6] for x in W]).filled(0)
-    print("_12_")
-    y_values_12 = -np.ma.log([pi(x)[23,29] for x in W]).filled(0)
-
-    print(y_values_00)
-    print(y_values_01)
-    print(y_values_11)
-    print(y_values_12)
-
-    plt.plot(x_values,y_values_00,'k*',label='(0,0)')
-    plt.plot(x_values,y_values_01,'g+',label='(0,1)')
-    plt.plot(x_values,y_values_11,'rx',label='(1,1)')
-    plt.plot(x_values,y_values_12,'c^',label='(1,2)')
-    plt.title("Transition matrix")
-    plt.ylabel("Likelihood")
-    plt.xlabel("Time Steps")
-    plt.legend(title="(Current,Next)")
-    plt.show()
-
 
 if __name__ == "__main__":
-    
-    # check_weibull() # passsed.
-    check_transition()
-
+    print("HI")
     

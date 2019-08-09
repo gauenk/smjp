@@ -12,6 +12,7 @@ L = the time since the last jump transition ( w_i - max_{t \in T,t \leq w_i} t )
 
 """
 
+import pickle,uuid,re
 import numpy as np
 import numpy.random as npr
 import seaborn as sns
@@ -20,6 +21,7 @@ from pkg.jump_mcmc import *
 from pkg.mh_mcmc import mh_mcmc
 from pkg.hidden_markov_model import *
 from pkg.smjp_utils import *
+from pkg.mcmc_utils import *
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
@@ -154,9 +156,9 @@ def experiment_2( likelihood_power = 1. ):
     s_size = len(state_space)
     time_length = 2 # for time t \in [0,time_length]
     omega = 2
+    uuid_str = uuid.uuid4()
 
     # experiment info
-    likelihood_power = 0.
     number_of_observations = 3
 
     # ------------------------------------------
@@ -203,6 +205,7 @@ def experiment_2( likelihood_power = 1. ):
     emission_likelihood = sMJPWrapper(smjp_emission_likelihood,state_space,smjp_emission_create)
     data_samples,data_times = create_toy_data(state_space,time_length,number_of_observations,emission_sampler)
     data = sMJPDataWrapper(data=data_samples,time=data_times)
+    data_sampler_info = [state_space,time_length,number_of_observations,emission_sampler]
     
     # likelihood of obs
     
@@ -218,32 +221,55 @@ def experiment_2( likelihood_power = 1. ):
 
     aggregate = {'W':[],'V':[],'T':[],'prob':[]}
     aggregate_prior = {'V':[],'T':[]}
-    number_of_samples = 1000
-    smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,data]
+    number_of_samples = 6000
+    smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,time_length]
     pi_0 = MultinomialDistribution({'prob_vector': np.ones(s_size)/s_size,\
                                     'translation':state_space})
-    T,V = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
-    for i in range(number_of_samples):
+    V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
 
-        # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
-        W = sample_smjp_event_times(poisson_process_A,V,T)
-        # just for testing
-        # W = np.arange(10)
-        # while len(W) > 9:
-        #     W = sample_smjp_event_times(poisson_process_A,V,T)
-        
-        V,T,prob = sample_smjp_trajectory_posterior(W,*smjp_sampler_input)
-        aggregate['W'].append(W)
-        aggregate['V'].append(V)
-        aggregate['T'].append(T)
-        aggregate['prob'].append(prob)
-        
-        # take some samples from the prior for de-bugging the mcmc sampler
-        _V,_T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
-        aggregate_prior['V'].append(_V)
-        aggregate_prior['T'].append(_T)
-        print("i = {}".format(i))
-        
+    if True:
+        for i in range(number_of_samples):
+
+            # ~~ sample the data given the sample path ~~
+            data = sample_data_posterior(V,T,*data_sampler_info)
+            # print(data)
+
+            # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
+            W = sample_smjp_event_times(poisson_process_A,V,T,time_length)
+            # just for testing
+            # W = np.arange(10)
+            # while len(W) > 9:
+            #     W = sample_smjp_event_times(poisson_process_A,V,T)
+
+            V,T,prob = sample_smjp_trajectory_posterior(W,data,*smjp_sampler_input)
+            aggregate['W'].append(W)
+            aggregate['V'].append(V)
+            aggregate['T'].append(T)
+            aggregate['prob'].append(prob)
+            print('posterior',np.c_[V,T])
+
+            # take some samples from the prior for de-bugging the mcmc sampler
+            _V,_T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
+            aggregate_prior['V'].append(_V)
+            aggregate_prior['T'].append(_T)
+            print('prior',np.c_[_V,_T])
+            print("i = {}".format(i))
+
+        # save to memory
+        pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,'uuid_str':uuid_str}
+        with open('results_{}.pkl'.format(uuid_str),'wb') as f:
+            pickle.dump(pickle_mem_dump,f)
+    else:
+        # load to memory
+        # filename = use_filepicker()
+        # results_e1.pkl
+        with open('results_likelihood_1_e2.pkl','rb') as f:
+            pickle_mem_dump = pickle.load(f)
+        aggregate = pickle_mem_dump['agg']
+        aggregate_prior = pickle_mem_dump['agg_prior']
+        uuid_str = pickle_mem_dump['uuid_str']
+        # print(aggregate,aggregate_prior)
+
 
     # --------------------------------------------------
     #
@@ -251,26 +277,41 @@ def experiment_2( likelihood_power = 1. ):
     # 
     # -------------------------------------------------
 
-    # 1.) time per state: [# of samples, # of states] each entry is \sum of time in each state, 
-    times_per_state = compute_time_per_state(aggregate)
-    times_per_state_prior = compute_time_per_state(aggregate_prior)
+    # compute [(i) total time, (ii) # jumps ] statistics over samples
+    time_info,jump_info = compute_evaluation_chain_metrics(aggregate,state_space)
+    time_info_prior,jump_info_prior = compute_evaluation_chain_metrics(aggregate_prior,state_space)
 
-    # 2.) number of transitions: [# of samples, 1] each entry is the size of T
-    num_of_transitions = compute_num_of_transitions(aggregate)
-    num_of_transitions_prior = compute_num_of_transitions(aggregate_prior)
+    agg_time_info,agg_jump_info = compute_metric_summaries(time_info,jump_info,state_space)
+    agg_time_info_prior,agg_jump_info_prior = compute_metric_summaries(time_info_prior,jump_info_prior,state_space)
 
     # compact the results for returning
-    metrics_posterior = {'state_times':[times_per_state],
-                         'transitions':[num_of_transitions]
+    metrics_posterior = {'time':time_info,
+                         'jump':jump_info,
+                         'agg_time':agg_time_info,
+                         'agg_jump':agg_jump_info,
                          }
-    metrics_prior = {'state_times':[times_per_state],
-                     'transitions':[num_of_transitions]
+    metrics_prior = {'time':time_info_prior,
+                     'jump':jump_info_prior,
+                     'agg_time':agg_time_info_prior,
+                     'agg_jump':agg_jump_info_prior,
     }
 
     # computing effective sample size
+    
+
+    # create plots of metrics
+    file_id = 'posterior'
+    plot_metric_traces(time_info,jump_info,state_space,uuid_str,file_id)
+    plot_metric_autocorrelation(time_info,jump_info,state_space,uuid_str,file_id)
+    create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
+
+    file_id = 'prior'
+    plot_metric_traces(time_info_prior,jump_info_prior,state_space,uuid_str,file_id)
+    plot_metric_autocorrelation(time_info_prior,jump_info_prior,state_space,uuid_str,file_id)
+    create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
+    exit()
 
     return metrics_posterior,metrics_prior,aggregate,aggregate_prior
-
 
 
 def experiment_3():
