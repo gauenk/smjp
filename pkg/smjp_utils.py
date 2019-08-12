@@ -1,3 +1,4 @@
+import copy
 import numpy as np
 import numpy.random as npr
 from functools import partial
@@ -92,20 +93,23 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
     # print(l_next == 0,l_next == t_hold,v_next == v_curr)
 
     # P(l_i | l_{i-1}, \delta w_i)
-    l_ratio = A(t_hold)[v_curr] / B(t_hold)[v_curr]
-    assert l_ratio <= 1, "the ratio of hazard functions should be <= 1"
+    l_ratio_A = np.ma.log([ A(t_hold)[v_curr] ]).filled(-np.infty)
+    l_ratio_B = np.ma.log([ B(t_hold)[v_curr] ]).filled(-np.infty)
+    l_ratio = l_ratio_A - l_ratio_B
+    assert l_ratio <= 0, "the ratio of hazard functions should be <= 1"
     if l_next == time_next:
-        log_probability += np.ma.log( [l_ratio] ).filled(-np.infty)[0]
         # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) : note below is _not_ a probability.
-        log_probability += np.ma.log([ A(t_hold)[v_curr,v_next] ]).filled(-np.infty)[0]
+        log_A = np.ma.log( [ A(t_hold)[v_curr,v_next] ] ).filled(-np.infty)
+        log_probability += log_A
+        # = A(t_hold)[v_curr,v_next] / B(t_hold)[v_curr]
     else:
         # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) = 1 if v_i == v_{i-1}
         # print(l_ratio)
-        log_probability += np.ma.log( [1. - l_ratio] ).filled(-np.infty)[0]
+        log_probability = np.ma.log( [1. - np.exp(l_ratio)] ).filled(-np.infty)[0]
     # print(log_probability)
     return log_probability # np.exp(log_probability)
 
-def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create):
+def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create,normalized=True):
     """
     The State_Space here refers to the ~actual state values~!
     This is different from the entire sMJP "state space" which includes 
@@ -132,13 +136,14 @@ def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create):
     else:  # return Prob of leaving s_curr for s_next; normalized over s_next
         hazard_rate = h_create(s_curr,s_next)
         rate = hazard_rate.l(t_hold)
-        normalization_rate = rate
-        for s_next in state_space:
-            # skip the same state (goal of this code snippet)
-            if s_next == s_curr: continue 
-            hazard_rate = h_create(s_curr,s_next)
-            normalization_rate += hazard_rate.l(t_hold)
-        rate /= normalization_rate
+        if normalized:
+            normalization_rate = rate
+            for s_next in state_space:
+                # skip the same state (goal of this code snippet)
+                if s_next == s_curr: continue 
+                hazard_rate = h_create(s_curr,s_next)
+                normalization_rate += hazard_rate.l(t_hold)
+            rate /= normalization_rate
         return rate
         
 
@@ -167,6 +172,8 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
     # s_next not used; kept for compatability with the smjpwrapper
     v_curr,l_curr = aug_state_space[s_curr]
     t_hold = time_current - l_curr
+    if t_hold < 0: # we want t_hold >= 0
+        return 0
     
     # P(x | v_i )
     if len(x) == 0: 
@@ -183,6 +190,7 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
     likelihood_delta_w = p_w.l([l_curr, time_current],v_curr)
 
     likelihood = likelihood_x * likelihood_delta_w
+
     return likelihood
 
 def smjp_emission_sampler(s_curr,s_next,observation,state_space,d_create):
@@ -227,18 +235,17 @@ class sMJPWrapper(object):
     """
 
     def __init__(self,state_function,state_space,*args,\
-                 observation_index=0,sampler=None,obs_is_iterable=False):
+                 observation_index=0,sampler=None,obs_is_iter=False):
         self.state_function = state_function
         self.state_space = state_space
         self.observation = None
         # its always just delta_t... I was originally confused during implementation.
         # Todo: remove the "observation_index" and replace with more explicit delta_t or.
         # dependance of more generally (t_curr,t_next).
-        self.observation_is_iterable = obs_is_iterable
+        self.observation_is_iterable = obs_is_iter
         self.state_function_args = args
         self.sampler_bool = False
         self.sampler = sampler
-
 
     def s(self,hold_time = None, n = 1):
         # alias for "sampler"
@@ -374,17 +381,27 @@ class PoissonProcess(object):
             N = npr.poisson( lam = mean )
             # print('N',N)
             samples_by_state = []
-            i = 0
-            while (i < N):
+
+            # --> version 1: force the # samples = N ~ Poisson ( mean ) <--
+            # i = 0
+            # while (i < N):
+            #     sample = self.hazard_function.sample( n = 1 )[current_state,state]
+            #     if sample <= tau:
+            #         samples_by_state.append(sample)
+            #         i += 1
+            # samples.extend(samples_by_state)
+            
+            # --> version 2: sample N; keep samples within interval <--
+            for i in range(N):
                 sample = self.hazard_function.sample( n = 1 )[current_state,state]
                 if sample <= tau:
                     samples_by_state.append(sample)
-                    i += 1
             samples.extend(samples_by_state)
+            
         samples = np.array(sorted(samples))
         # print('interval',interval)
         if len(samples) > 0:
-            samples = samples + interval[0]
+            samples = samples + interval[0] # handles the offset by interval
         # print('samples',samples)
         return samples
 
@@ -393,11 +410,12 @@ class PoissonProcess(object):
 
     def likelihood(self,interval,current_state):
         tau = interval[1] - interval[0]
-        # print('a',interval,interval[1])
+        # print('poisson_likelihood.l()',interval,interval[1])
         likelihood = self.hazard_function(interval[1])[current_state]
         log_likelihood = 0
         for state in self.state_space:
-            mean = self.mean_function( interval[0], interval[1], current_state, state)
+            # mean = self.mean_function( interval[0], interval[1], current_state, state)
+            mean = self.mean_function( 0, tau, current_state, state)
             #log_likelihood += self.poisson_likelihood(mean,0) #mistake i bet
             log_likelihood += mean
         likelihood *= np.exp(-log_likelihood)
@@ -411,7 +429,8 @@ class PoissonProcess(object):
         scale = self.mean_function_params['scale'][curr_state_index][next_state_index]
         # print(scale,t_end,t_start,shape)
         # print(scale**shape)
-        mean = ( t_end**shape - t_start**shape ) / scale**shape
+        mean = (t_end/scale)**shape - (t_start/scale)**shape
+        # print(mean)
         return mean
 
     def poisson_likelihood(self,mean,k):
@@ -429,11 +448,12 @@ def weibull_hazard_create_unset(shape_mat,scale_mat,state_space,state_curr,state
     return rv
 
 # sampler for sampling (1) prior trajectories & (2) discretizations
-def smjp_hazard_sampler_unset(tate_space,h_create,hold_time,current_state,next_state,n=1):
+def smjp_hazard_sampler_unset(state_space,h_create,hold_time,current_state,next_state,n=1):
     if hold_time is None: # sampling over hold_time "\tau" given (current_state,next_state)
         sample = h_create(current_state,next_state).sample(n)
         return sample
     else: # sampling over next state given (hold_time, current_state)
+        assert next_state is None,"next state must be None"
         state_rate = []
         for next_state in state_space:
             rate = h_create(current_state,next_state).l(hold_time)
@@ -501,7 +521,7 @@ def sample_smjp_event_times(poisson_process,V,T,time_length):
 # sample from the prior 
 #
 
-def sample_smjp_trajectory_prior(pi, pi_0, state_space, t_end, t_start = 0):
+def sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, t_end, t_start = 0):
     """
     ~~ Sampling from the prior ~~
     """
@@ -514,9 +534,10 @@ def sample_smjp_trajectory_prior(pi, pi_0, state_space, t_end, t_start = 0):
     while(w_curr < t_end):
         
         # sample all holding times for the next state
+        # ?? TODO: what is the sampler for the pi distribution in generation?
         hold_time_samples = []
         for state in state_space:
-            hold_time_samples += [ pi.sample()[v_curr,state] ]
+            hold_time_samples += [ hazard_A.sample()[v_curr,state] ]
 
         # take the smallest hold-time and move to that state
         t_hold = np.min(hold_time_samples)
@@ -597,7 +618,7 @@ def sample_smjp_trajectory_posterior(W,data,state_space,hazard_A,hazard_B,smjp_e
     # data likelihood defined over augmented state space
     #
     # ----------------------------------------------------------------------
-    emission = sMJPWrapper(smjp_e,augmented_state_space,obs_is_iterable=True)
+    emission = sMJPWrapper(smjp_e,augmented_state_space,obs_is_iter=True)
 
     # ----------------------------------------------------------------------
     #
@@ -615,8 +636,7 @@ def sample_smjp_trajectory_posterior(W,data,state_space,hazard_A,hazard_B,smjp_e
     # transition probability over augmented state space
     #
     # ----------------------------------------------------------------------
-
-    pi = sMJPWrapper(smjp_transition,augmented_state_space,hazard_A,hazard_B,obs_is_iterable=True)
+    pi = sMJPWrapper(smjp_transition,augmented_state_space,hazard_A,hazard_B,obs_is_iter=True)
 
     # ----------------------------------------------------------------------
     #
@@ -669,25 +689,17 @@ def include_endpoint_in_thinned_samples(thinned_samples,t_end):
         complete_thinned_samples = np.r_[thinned_samples,end]
         return complete_thinned_samples
 
-def sample_data_posterior(V,T,state_space,time_length,num_obs,emission_sampler):
+def sample_data_posterior(V,T,state_space,time_length,emission_sampler):
     ss = len(state_space)
     # print(V,T)
     obs_times = T
-    # subset randomly
-    obs_times = np.sort(npr.choice(obs_times,size=num_obs,replace=False))
-    
-    # -- create the posterior multinomial sampling distribution --
-    mn_prob = np.ones(ss) / len(state_space) 
-    for state_index,state in enumerate(state_space):
-        n = np.sum(V == state)
-        mn_prob[state_index] += n
-    mn_prob /= np.sum(mn_prob)
-    states_index = np.where(npr.multinomial(1,mn_prob,num_obs) == 1)[1]
+    # -- sample via emission probability --
     data = []
-    for state_index in states_index:
-        state = state_space[state_index]
+    for state in V:
+        # ???? I am not sure if this is actually how we should randomize the data... ???
+        # do we thin? do we keep?
         # STILL: this is pretty un-necessary here since its 100 v 1 [emission _not_ posterior] 
-        data += [emission_sampler(0)[state]] 
+        data += [emission_sampler(None)[state]] 
     data_samples,data_times = data,obs_times
     # print(data,obs_times)
     data = sMJPDataWrapper(data=data_samples,time=data_times)
@@ -702,7 +714,7 @@ def create_toy_data(state_space,time_length,number_of_observations,emission_samp
     for state_index in states_index:
         state = state_space[state_index]
         # this is pretty un-necessary here since its 100 v 1
-        data += [emission_sampler(0)[state]] 
+        data += [emission_sampler(None)[state]] 
     return data,obs_times
     
 def smjp_emission_multinomial_create_unset(state_space,state_curr):

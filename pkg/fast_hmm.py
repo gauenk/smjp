@@ -122,7 +122,8 @@ def backward_sampling_hmm(*args,**kwargs):
     time_iter = reversed(time_grid[:-1])
     i = 0
     iterable = [[i,j] for i,j in enumerate(time_grid[:-1])]
-    # print(time_grid)
+    # print('time_grid',time_grid)
+    # print('(sample,time_current):',pi.state_space[samples[0,-1]],time_grid[-1])
     for time_index_current,time_current in reversed(iterable):
         i += 1
         time_index_next = time_index_current + 1
@@ -156,6 +157,7 @@ def backward_sampling_hmm(*args,**kwargs):
         # sampling_prob = (alpha_c * transition) * (likelihood_data) * (beta_n / alpha_n)
         sampling_prob = np.exp(alpha_c + transition + likelihood_data + beta_n - alpha_n)
         sampling_prob /= np.sum(sampling_prob)
+        # print('time_current',time_current)
         # print('samp_prob',sampling_prob)
 
         time_current_p,time_next_p = round(time_current,3),round(time_next,3)
@@ -163,7 +165,7 @@ def backward_sampling_hmm(*args,**kwargs):
 
         s = np.where(npr.multinomial(num_of_samples,sampling_prob) == 1)[0][0]
         samples[:,time_index_current] = s
-        # print(pi.state_space[s],time_current)
+        # print('(sample,time_current):',pi.state_space[s],time_current)
 
     
     # translate the sample back

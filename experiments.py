@@ -170,15 +170,21 @@ def experiment_2( likelihood_power = 1. ):
     shape_mat = npr.uniform(0.6,3.0,s_size**2).reshape((s_size,s_size))
     scale_mat = np.ones((s_size,s_size)) 
     scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,omega)
+    scale_mat_hat = create_upperbound_scale(shape_mat,scale_mat,omega-1)
 
     # hazard A needs a sampler for the prior
     weibull_hazard_create_A = partial(weibull_hazard_create_unset,shape_mat,scale_mat,state_space)
     weibull_hazard_sampler_A = partial(smjp_hazard_sampler_unset,state_space,weibull_hazard_create_A)
 
+    # hazard A_hat needed for the grid sampler
+    weibull_hazard_create_A_hat = partial(weibull_hazard_create_unset,shape_mat,scale_mat_hat,state_space)
+    weibull_hazard_sampler_A_hat = partial(smjp_hazard_sampler_unset,state_space,weibull_hazard_create_A_hat)
+
     # hazard B
     weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,scale_mat_tilde,state_space)
 
     hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A,sampler=weibull_hazard_sampler_A)
+    hazard_A_hat = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A_hat,sampler=weibull_hazard_sampler_A_hat)
     hazard_B = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_B)
 
 
@@ -190,6 +196,8 @@ def experiment_2( likelihood_power = 1. ):
 
     pp_mean_params_A = {'shape':shape_mat,'scale':scale_mat}
     poisson_process_A = PoissonProcess(state_space,None,hazard_A,pp_mean_params_A)
+    pp_mean_params_A_hat = {'shape':shape_mat,'scale':scale_mat_hat}
+    poisson_process_A_hat = PoissonProcess(state_space,None,hazard_A_hat,pp_mean_params_A_hat)
     pp_mean_params_B = {'shape':shape_mat,'scale':scale_mat_tilde}
     poisson_process_B = PoissonProcess(state_space,None,hazard_B,pp_mean_params_B)
 
@@ -205,7 +213,7 @@ def experiment_2( likelihood_power = 1. ):
     emission_likelihood = sMJPWrapper(smjp_emission_likelihood,state_space,smjp_emission_create)
     data_samples,data_times = create_toy_data(state_space,time_length,number_of_observations,emission_sampler)
     data = sMJPDataWrapper(data=data_samples,time=data_times)
-    data_sampler_info = [state_space,time_length,number_of_observations,emission_sampler]
+    data_sampler_info = [state_space,time_length,emission_sampler]
     
     # likelihood of obs
     
@@ -227,15 +235,15 @@ def experiment_2( likelihood_power = 1. ):
                                     'translation':state_space})
     V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
 
-    if True:
+    if True: # False:
         for i in range(number_of_samples):
 
             # ~~ sample the data given the sample path ~~
             data = sample_data_posterior(V,T,*data_sampler_info)
-            # print(data)
+            print('data',data)
 
             # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
-            W = sample_smjp_event_times(poisson_process_A,V,T,time_length)
+            W = sample_smjp_event_times(poisson_process_A_hat,V,T,time_length)
             # just for testing
             # W = np.arange(10)
             # while len(W) > 9:
@@ -263,7 +271,7 @@ def experiment_2( likelihood_power = 1. ):
         # load to memory
         # filename = use_filepicker()
         # results_e1.pkl
-        with open('results_likelihood_1_e2.pkl','rb') as f:
+        with open('results_e3.pkl','rb') as f:
             pickle_mem_dump = pickle.load(f)
         aggregate = pickle_mem_dump['agg']
         aggregate_prior = pickle_mem_dump['agg_prior']
@@ -309,6 +317,7 @@ def experiment_2( likelihood_power = 1. ):
     plot_metric_traces(time_info_prior,jump_info_prior,state_space,uuid_str,file_id)
     plot_metric_autocorrelation(time_info_prior,jump_info_prior,state_space,uuid_str,file_id)
     create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
+    print("Finished computing metrics for experiment id {}".format(uuid_str))
     exit()
 
     return metrics_posterior,metrics_prior,aggregate,aggregate_prior
