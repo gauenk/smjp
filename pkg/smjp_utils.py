@@ -181,17 +181,20 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
         likelihood_x = 1
     else:
         likelihood_x = compute_likelihood_obs(x,p_x,state_space,v_curr,inv_temp)
+    #print("where??")
 
     # P( \delta w_i | v_i, l_i )
     if time_current < 0:
         print(x,time_current,v_curr,l_curr,t_hold)
         print(state_space)
         print(aug_state_space)
+    # t_hold = delta_w + l_curr
     likelihood_delta_w = p_w.l([l_curr, time_current],v_curr)
 
     likelihood = likelihood_x * likelihood_delta_w
+    log_likelihood = np.ma.log([likelihood]).filled(-np.infty)
 
-    return likelihood
+    return log_likelihood
 
 def smjp_emission_sampler(s_curr,s_next,observation,state_space,d_create):
     # s_next,observation not used; kept for compatability with the smjpwrapper
@@ -383,20 +386,21 @@ class PoissonProcess(object):
             samples_by_state = []
 
             # --> version 1: force the # samples = N ~ Poisson ( mean ) <--
-            # i = 0
-            # while (i < N):
-            #     sample = self.hazard_function.sample( n = 1 )[current_state,state]
-            #     if sample <= tau:
-            #         samples_by_state.append(sample)
-            #         i += 1
-            # samples.extend(samples_by_state)
-            
-            # --> version 2: sample N; keep samples within interval <--
-            for i in range(N):
+            # this is rejection sampling over the truncated distribution
+            i = 0
+            while (i < N):
                 sample = self.hazard_function.sample( n = 1 )[current_state,state]
                 if sample <= tau:
                     samples_by_state.append(sample)
+                    i += 1
             samples.extend(samples_by_state)
+            
+            # --> version 2: sample N; keep samples within interval <-- WRONG!
+            # for i in range(N):
+            #     sample = self.hazard_function.sample( n = 1 )[current_state,state]
+            #     if sample <= tau:
+            #         samples_by_state.append(sample)
+            # samples.extend(samples_by_state)
             
         samples = np.array(sorted(samples))
         # print('interval',interval)
@@ -410,15 +414,17 @@ class PoissonProcess(object):
 
     def likelihood(self,interval,current_state):
         tau = interval[1] - interval[0]
-        # print('poisson_likelihood.l()',interval,interval[1])
-        likelihood = self.hazard_function(interval[1])[current_state]
-        log_likelihood = 0
-        for state in self.state_space:
-            # mean = self.mean_function( interval[0], interval[1], current_state, state)
-            mean = self.mean_function( 0, tau, current_state, state)
-            #log_likelihood += self.poisson_likelihood(mean,0) #mistake i bet
-            log_likelihood += mean
-        likelihood *= np.exp(-log_likelihood)
+        # A_{s,s'}(\tau) is the hazard function
+        # = [\sum_{s'\in S} A_{s,s'}(\tau)] * exp\{ \int_{0}^{\tau} A_s(\tau) \}
+        # -----------------------------
+        # -=-=-=-> version 1 <-=-=-=-=-
+        # -----------------------------
+        front_term = 0
+        log_exp_term = 0
+        for next_state in self.state_space:
+            front_term += self.hazard_function(tau)[current_state,next_state]
+            log_exp_term += self.mean_function( 0, tau, current_state, next_state)
+        likelihood = front_term * np.exp(-log_exp_term)
         return likelihood
 
     def weibull_mean(self,t_start,t_end,current_state,state):
@@ -664,7 +670,7 @@ def sample_smjp_trajectory_posterior(W,data,state_space,hazard_A,hazard_B,smjp_e
     # ensure [t_end] is included; copy the findal state to time t_end
     thinned_samples = include_endpoint_in_thinned_samples(thinned_samples,t_end)
 
-    print(thinned_samples)
+    # print(thinned_samples)
     # print(samples)
     # print(t_samples)
     s_states = thinned_samples[:,0]
@@ -703,7 +709,7 @@ def sample_data_posterior(V,T,state_space,time_length,emission_sampler):
     data_samples,data_times = data,obs_times
     # print(data,obs_times)
     data = sMJPDataWrapper(data=data_samples,time=data_times)
-    print(data)
+    # print(data)
     return data
 
 def create_toy_data(state_space,time_length,number_of_observations,emission_sampler):

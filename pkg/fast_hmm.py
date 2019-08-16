@@ -71,7 +71,7 @@ def compute_beta_term(pi,beta_next,e,obs,time_c,time_n):
     ss_size = len(states)
     betas = np.zeros(ss_size)
     for state_n in range(ss_size):
-        likelihood_data = np.ma.log([e(obs)[state_n]]).filled(-np.infty)
+        likelihood_data = e(obs)[state_n]
         # beta_n = np.ma.log(beta_next[state_n]).filled(-np.infty)
         beta_n = beta_next[state_n] # our beta terms are already log
         if np.isinf(likelihood_data) or np.isinf(beta_n):
@@ -128,19 +128,19 @@ def backward_sampling_hmm(*args,**kwargs):
         i += 1
         time_index_next = time_index_current + 1
         time_next = time_grid[time_index_next]
-        obs = [O[time_current,time_next],time_next]
+        obs = [O[time_current,time_next],time_current]
 
         # --> sample_{t+1} [get the previous sample index] <--
         next_sample = samples[:,time_index_next][0]
 
         # --> compute beta terms (we might need these) <--
-        beta_term_args = [pi,betas[time_index_next,:],e,obs,time_current,time_next]
-        betas[time_index_current,:] = compute_beta_term(*beta_term_args)
-        beta_n = betas[time_index_next,next_sample]
+        # beta_term_args = [pi,betas[time_index_next,:],e,obs,time_current,time_next]
+        # betas[time_index_current,:] = compute_beta_term(*beta_term_args)
+        # beta_n = betas[time_index_next,next_sample]
 
         # --> alpha_{t+1}(next_sample), a scalar <--
-        alpha_at_next = log_alphas[time_index_next,:]
-        alpha_n = alpha_at_next[next_sample]
+        # alpha_at_next = log_alphas[time_index_next,:]
+        # alpha_n = alpha_at_next[next_sample]
 
         # --> alpha_t [not normalized] <--
         alpha_at_current = log_alphas[time_index_current,:]
@@ -150,12 +150,12 @@ def backward_sampling_hmm(*args,**kwargs):
         transition = compute_transition_vector(pi,next_sample,time_current,time_next)
         
         # --> likelihood of data, a scalar <--
-        likelihood_data = np.ma.log([e(obs)[next_sample]]).filled(-np.infty)
+        # likelihood_data = np.ma.log([e(obs)[next_sample]]).filled(-np.infty)
 
         # altogether.
-        # print(alpha_c, transition,likelihood_data,beta_n,alpha_n)
+        # print(alpha_c, transition)#,likelihood_data,beta_n,alpha_n)
         # sampling_prob = (alpha_c * transition) * (likelihood_data) * (beta_n / alpha_n)
-        sampling_prob = np.exp(alpha_c + transition + likelihood_data + beta_n - alpha_n)
+        sampling_prob = np.exp(alpha_c + transition)
         sampling_prob /= np.sum(sampling_prob)
         # print('time_current',time_current)
         # print('samp_prob',sampling_prob)
@@ -203,24 +203,34 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
     # init forward pass
     time_next = time_grid[0] # == 0 (or t_start)
     for state_idx in range(num_of_states):
-        obs = [O[0,time_next],time_next]
+        obs = [O[0,time_next],0]
         ll_init =  np.ma.log([init_probs.l(state_idx)]).filled(-np.infty)
-        ll_obs = np.ma.log([e(obs)[state_idx]]).filled(-np.infty)
+        # print('init_prob.l({}): {:3f}'.format(state_idx,ll_init[0]))
+        ll_obs = e(obs)[state_idx]
+        # print(ll_obs)
         log_alphas[0,state_idx] = ll_init + ll_obs
         log_viterbi[0,state_idx] = ll_init + ll_obs
     
+    # print("log_alphas[0,:]",log_alphas[0,:])
+    # exit()
     print("|W| = {}".format(len(time_grid)))
     for time_index,time_c in enumerate(time_grid[0:-1]): # {w_0,...,w_{|W|-1}}
         alpha_index = time_index + 1
         time_n = time_grid[alpha_index] # update the next time.
-        obs = [O[time_c,time_n],time_n]
-        for state_n in range(num_of_states):
-            log_obs = np.ma.log([e(obs)[state_n]]).filled(-np.infty)[0]
-            for state_c in range(num_of_states):
+        obs = [O[time_c,time_n],time_c]
+        for state_c in range(num_of_states):
+            log_obs = e(obs)[state_c] # used to be state_n
+            # print("--> ff: log_obs",log_obs)
+            if np.isinf(log_obs):
+                continue
+            for state_n in range(num_of_states):
                 if is_pi_zero(time_c,time_n,state_c,state_n,states):
                     continue
                 log_alpha = log_alphas[alpha_index-1,state_c]
+                if np.isinf(log_alpha):
+                    continue
                 log_transition = pi([time_c,time_n])[state_c,state_n]
+                # print('ff',log_alpha, log_transition)
                 alpha_new = np.exp(log_alpha + log_transition + log_obs)
                 log_alphas[alpha_index,state_n] += alpha_new
         log_alphas[alpha_index,:] = np.ma.log([log_alphas[alpha_index,:]]).filled(-np.infty)
@@ -241,6 +251,7 @@ def is_pi_zero(time_c,time_n,state_c,state_n,states):
         return True
     if (time_n < l_c):
         return True
+    #print("(v_c,l_c) -> (v_n,l_n) : ({},{}) -> ({},{})".format(v_c,l_c,v_n,l_n))
     return False
     
 def do_we_thin(state_space,sc_idx,sn_idx,delta_w):

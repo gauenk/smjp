@@ -217,6 +217,7 @@ def experiment_2( likelihood_power = 1. ):
     
     # likelihood of obs
     
+    # P(\deta_w + l_i | v_i ) \sim A? \sim B? \sim A_hat? I think A_hat. Rao says "B".... why?
     emission_info = [emission_likelihood,poisson_process_B,likelihood_power,state_space]
     smjp_emission = partial(smjp_emission_unset,*emission_info)
 
@@ -235,7 +236,7 @@ def experiment_2( likelihood_power = 1. ):
                                     'translation':state_space})
     V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
 
-    if True: # False:
+    if True: #False:
         for i in range(number_of_samples):
 
             # ~~ sample the data given the sample path ~~
@@ -271,7 +272,7 @@ def experiment_2( likelihood_power = 1. ):
         # load to memory
         # filename = use_filepicker()
         # results_e1.pkl
-        with open('results_e3.pkl','rb') as f:
+        with open('results_e2_r00.pkl','rb') as f:
             pickle_mem_dump = pickle.load(f)
         aggregate = pickle_mem_dump['agg']
         aggregate_prior = pickle_mem_dump['agg_prior']

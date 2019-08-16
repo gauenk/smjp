@@ -17,5 +17,5 @@ from experiments import *
 if __name__ == "__main__":
     np.seterr(all='print')
     np.set_printoptions(precision=3)
-    experiment_2(likelihood_power = .1)
+    experiment_2(likelihood_power = .0)
     
