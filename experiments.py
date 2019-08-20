@@ -236,6 +236,7 @@ def experiment_2( likelihood_power = 1. ):
                                     'translation':state_space})
     V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
 
+    save_iter = 300
     if True: #False:
         for i in range(number_of_samples):
 
@@ -263,6 +264,10 @@ def experiment_2( likelihood_power = 1. ):
             aggregate_prior['T'].append(_T)
             print('prior',np.c_[_V,_T])
             print("i = {}".format(i))
+
+            if (i % save_iter) == 0:
+                print("saving current samples to file.")
+                save_current_results(aggregate,aggregate_prior,uuid_str,i)
 
         # save to memory
         pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,'uuid_str':uuid_str}
@@ -335,3 +340,7 @@ def experiment_3():
         m_posterior,m_prior,agg_posterior,agg_prior = experiment_2(inv_temp)
 
         
+def save_current_results(aggregate,aggregate_prior,uuid_str,n_iters):
+    pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,'uuid_str':uuid_str}
+    with open('results_{}_{}.pkl'.format(uuid_str,n_iters),'wb') as f:
+        pickle.dump(pickle_mem_dump,f)

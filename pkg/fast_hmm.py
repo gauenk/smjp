@@ -157,15 +157,15 @@ def backward_sampling_hmm(*args,**kwargs):
         log_samp_prob -= logsumexp(log_samp_prob)
         sampling_prob = np.exp(log_samp_prob)
         sampling_prob /= np.sum(sampling_prob)
-        print('time_current',time_current)
-        print('samp_prob',sampling_prob)
+        # print('time_current',time_current)
+        # print('samp_prob',sampling_prob)
 
         time_current_p,time_next_p = round(time_current,3),round(time_next,3)
         time_str = "({},{})".format(time_current_p,time_next_p)
 
         s = np.where(npr.multinomial(num_of_samples,sampling_prob) == 1)[0][0]
         samples[:,time_index_current] = s
-        print('(sample,time_current):',pi.state_space[s],time_current)
+        # print('(sample,time_current):',pi.state_space[s],time_current)
 
     
     # translate the sample back
@@ -212,8 +212,8 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
     # print("log_alphas[0,:]",log_alphas[0,:])
     # exit()
     trans_vec = np.zeros(log_alphas[0,:].shape)
-    print(npt(pi.state_space))
-    print("|W| = {}".format(len(time_grid)))
+    # print(npt(pi.state_space))
+    # print("|W| = {}".format(len(time_grid)))
     # start at w_0 or w_1?
     for time_p_index,time_c in enumerate(time_grid[1:-1]): # \{ w_0,...,w_{|W|-1} \}
         # time_p_index \in {0,...,|W| - 2}
