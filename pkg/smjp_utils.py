@@ -9,7 +9,7 @@ from pkg.hidden_markov_model import HMMWrapper,HiddenMarkovModel
 from pkg.fast_hmm import fast_HiddenMarkovModel
 from pkg.timer import Timer
 
-def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B):
+def smjp_transition(s_prev_idx,s_curr_idx,observation,augmented_state_space,A,B):
     """
     "augmented_state_space" includes the time discretization
     The "s_curr_idx,s_next_idx" here refers to the ~state indices~!
@@ -22,13 +22,13 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
     2. P(v_i,l_i | v_{i-1}, l_i, \delta w_i) 
     """
     log_probability = 0
-    time_current,time_next = observation
+    time_p,time_c = observation
+    v_prev,l_prev = augmented_state_space[s_prev_idx]
     v_curr,l_curr = augmented_state_space[s_curr_idx]
-    v_next,l_next = augmented_state_space[s_next_idx]
-    t_hold = time_next - l_curr
+    t_hold = time_c - l_curr
 
-    if t_hold < 0:
-        return -np.infty
+    # if t_hold < 0:
+    #     return -np.infty
     # (T,?,?)
     # (F,T,T)
 
@@ -38,16 +38,16 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
     # print((l_next == t_hold), (v_next != v_curr))
 
     # we can't hold for negative time; this happens when
-    # l_next > time_next (good to go) 
+    # l_next > time_c (good to go) 
     # ~but~
-    # l_current > time_next (current state is greater than current time)
+    # l_current > time_c (current state is greater than current time)
     # --> this only happens in backward-sampling since we can sample "backward in time"
     # resulting in l_currents that are actually greater than the time we are at.
     """
     Needed when saying: "l_curr" is the time ~of~ the most recent jump
     
     This does not happen in "forward-filter" since we consider each state in sequence with
-    "time_next". Iow, we have l_curr <= time_next since we have the "if l_next < time_next"
+    "time_c". Iow, we have l_curr <= time_c since we have the "if l_next < time_c"
     condition. 
 
     The key, l_next becomes l_curr.
@@ -65,41 +65,69 @@ def smjp_transition(s_curr_idx,s_next_idx,observation,augmented_state_space,A,B)
     at time (t-1), then the sampled state of (v,t-2) is a lie. Without the following 
     condition, that is exactly what happens.
     """
-    if (l_curr > l_next): 
-        return -np.infty
-    # if (l_curr == l_next) then we've thinned an event. This is okay.
+    # if (l_prev > l_curr): 
+    #     return -np.infty
+    # # if (l_curr == l_next) then we've thinned an event. This is okay.
 
-    # says: we can not "jump" into the past [very confident]
-    # if we are holding a state, we can not change the most recent jump time.
-    # if we do change the jump time, it must happen ~not before~ time_current
-    if (l_next <= time_current) and (s_curr_idx != s_next_idx):
+    # # says: we can not "jump" into the past [very confident]
+    # # if we are holding a state, we can not change the most recent jump time.
+    # # if we do change the jump time, it must happen ~not before~ time_p
+    # if (l_curr < time_p) and (s_prev_idx != s_curr_idx):
+    #     return -np.infty
+
+    # # Note: we can return immmediately if the "l_next" is not possible.
+    # # -> this is common since l_next can only be {0, l_curr + delta_w }
+    # # print("smjp_pi",t_hold,l_next,l_curr,v_next,v_curr, l_next == t_hold)
+    # if (l_curr > time_p):
+    #     return -np.infty
+
+    # # if we thin the current time-step,
+    # # 1.) we can not transition state values.
+    # if (l_curr < time_c) and (s_prev_idx != s_curr_idx):
+    #     return -np.infty
+
+    error_conditions = (time_p >= time_c)
+    invalid_conditions = (l_prev > l_curr)
+    # the "jump" condition
+    true_condition_1 = (l_curr == time_c) and (l_prev <= time_p)
+    # the "thin" condition
+    true_condition_2 = (l_curr == l_prev) and (v_curr == v_prev) and (l_prev <= time_p)
+    # the "self-transition" condition
+    true_condition_3 = (l_curr == l_prev) and (v_curr == v_prev) and (time_p == time_c)
+    # print(time_p == time_c,time_p,time_c)
+    
+    # "<="? or "<" for (l_prev ?? time_p)
+    """
+    I think we need the allow the equality due to self transitions.
+    E.g. We need to be able "transition" from (1,0) -> (1,0) when computing 
+    the forward probabilities
+    
+    But on the other, more concrete, hand we have that l_prev cannot be equal to
+    time_p since "the most recent jump" cannot happen in the future.
+
+    BUT we might be having a translation issue between "time_p" 
+    and the "delta w_i" terms from the paper. 
+    """
+    
+    any_true_conditions = true_condition_1 or true_condition_2 or true_condition_3
+    # print(invalid_conditions)
+    # print((time_p >= time_c), (l_prev > l_curr))
+    # print(l_prev, l_curr)
+    # print(true_condition_1)
+    # print(true_condition_2)
+    if error_conditions or invalid_conditions or (not any_true_conditions):
+        if error_conditions:
+            raise ValueError("We can not have time_p >= time_c")
         return -np.infty
     
-
-    # Note: we can return immmediately if the "l_next" is not possible.
-    # -> this is common since l_next can only be {0, l_curr + delta_w }
-    # print("smjp_pi",t_hold,l_next,l_curr,v_next,v_curr, l_next == t_hold)
-    if (l_next > time_next):
-        return -np.infty
-
-    # if we thin the current time-step,
-    # 1.) we can not transition state values.
-    if (l_next < time_next) and (s_curr_idx != s_next_idx):
-        return -np.infty
-
-    # print(delta_w)
-    # print(s_curr,s_next)
-    # print(augmented_state_space[s_curr],augmented_state_space[s_next])
-    # print(l_next == 0,l_next == t_hold,v_next == v_curr)
-
     # P(l_i | l_{i-1}, \delta w_i)
-    l_ratio_A = np.ma.log([ A(t_hold)[v_curr] ]).filled(-np.infty)
-    l_ratio_B = np.ma.log([ B(t_hold)[v_curr] ]).filled(-np.infty)
+    l_ratio_A = np.ma.log([ A(t_hold)[v_curr] ]).filled(-np.infty)[0]
+    l_ratio_B = np.ma.log([ B(t_hold)[v_curr] ]).filled(-np.infty)[0]
     l_ratio = l_ratio_A - l_ratio_B
     assert l_ratio <= 0, "the ratio of hazard functions should be <= 1"
-    if l_next == time_next:
+    if l_curr == time_p:
         # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) : note below is _not_ a probability.
-        log_A = np.ma.log( [ A(t_hold)[v_curr,v_next] ] ).filled(-np.infty)
+        log_A = np.ma.log( [ A(t_hold)[v_prev,v_curr] ] ).filled(-np.infty)[0]
         log_probability += log_A
         # = A(t_hold)[v_curr,v_next] / B(t_hold)[v_curr]
     else:
@@ -168,13 +196,48 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
     P( x_i | v_i ) * P( \delta w_i | v_i, l_i )
     """
 
-    x,time_current = observation
+    x,times = observation
+    time_c,time_n = times
     # s_next not used; kept for compatability with the smjpwrapper
     v_curr,l_curr = aug_state_space[s_curr]
-    t_hold = time_current - l_curr
-    if t_hold < 0: # we want t_hold >= 0
-        return 0
-    
+    t_hold = time_n - l_curr
+    t_hold_c = time_c - l_curr
+
+    invalid_conditions = (time_c >= time_n)
+    if invalid_conditions:
+        return -np.infty
+    #     """
+    #     I don't think I return 0 in the case of t_hold_c < 0 since
+    #     we can have a jump to a new state at l_curr
+
+    #     say W = { ..., 0.9, 1.0, ... }
+    #     l_curr = {?,1.0}
+    #     then we jump at time 1.0
+
+    #     then t_hold = 0
+    #     t_hold_c = -0.1
+
+    #     But if we return "0" then this cancels the rest of the alpha
+    #     probabilities...
+
+    #     I don't think we can write our probability with "l_i" as the 
+    #     "time of jump" the same way it is written in the pdf with
+    #     "l_i" meaning the "time since the jump".
+
+    #     """
+
+    #     return -np.infty
+
+    if t_hold <= 0: # we want t_hold >= 0
+        return -np.infty
+    if t_hold_c < 0:
+        print(times)
+        print(t_hold_c)
+        print(l_curr)
+        exit()
+
+    # print('sc',s_curr)
+    # print(t_hold)
     # P(x | v_i )
     if len(x) == 0: 
         # return no information when the observation is 
@@ -184,16 +247,42 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
     #print("where??")
 
     # P( \delta w_i | v_i, l_i )
-    if time_current < 0:
-        print(x,time_current,v_curr,l_curr,t_hold)
-        print(state_space)
-        print(aug_state_space)
+    # if t_hold < 0:
+    #     print(x,time_c,v_curr,l_curr,t_hold)
+    #     print(state_space)
+    #     print(aug_state_space)
     # t_hold = delta_w + l_curr
-    likelihood_delta_w = p_w.l([l_curr, time_current],v_curr)
+    
+    """
+    The issue now is that we've got to compute the integral after equation 3
+    but this integral requires knowing how long we've held our current state value.
+    
+    For example,
+
+    say at time 1 we jump to state 3. Say the grid includes 1.1. Then at 1.1 if we hold
+    we went from holding 0 sec to .1 sec. Say the grid includes 1.5. Then at 1.1 if we hold 
+    then we move from holding .1 to .5 sec. The information about .1 is contained in the pdf
+    in the "L" values "time hold". But since l_curr says: "time of jump", we need a way to 
+    include the delta_w term as the input
+
+    The integral is not shift-invariant (duh) so we really need to original "l_i" term,
+    or hold time term from the previous state.
+
+    delta_w_i is not a problem to give as an observation
+
+    the previous hold time is the challenging part...
+
+    "l_i" (from pdf) = time_c - l_curr?
+
+    """
+    
+    
+    likelihood_delta_w = p_w.l([t_hold_c,t_hold],v_curr)
 
     likelihood = likelihood_x * likelihood_delta_w
-    log_likelihood = np.ma.log([likelihood]).filled(-np.infty)
+    log_likelihood = np.ma.log([likelihood]).filled(-np.infty)[0]
 
+    # print('LL',log_likelihood)
     return log_likelihood
 
 def smjp_emission_sampler(s_curr,s_next,observation,state_space,d_create):
@@ -415,7 +504,7 @@ class PoissonProcess(object):
     def likelihood(self,interval,current_state):
         tau = interval[1] - interval[0]
         # A_{s,s'}(\tau) is the hazard function
-        # = [\sum_{s'\in S} A_{s,s'}(\tau)] * exp\{ \int_{0}^{\tau} A_s(\tau) \}
+        # = [\sum_{s'\in S} A_{s,s'}(\tau)] * exp\{ \int_{l_i}^{l_i + \delta w_i} A_s(\tau) \}
         # -----------------------------
         # -=-=-=-> version 1 <-=-=-=-=-
         # -----------------------------
@@ -423,7 +512,8 @@ class PoissonProcess(object):
         log_exp_term = 0
         for next_state in self.state_space:
             front_term += self.hazard_function(tau)[current_state,next_state]
-            log_exp_term += self.mean_function( 0, tau, current_state, next_state)
+            log_exp_term += self.mean_function( interval[0], interval[1], current_state, \
+                                                next_state)
         likelihood = front_term * np.exp(-log_exp_term)
         return likelihood
 

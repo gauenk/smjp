@@ -71,7 +71,7 @@ def compute_beta_term(pi,beta_next,e,obs,time_c,time_n):
     ss_size = len(states)
     betas = np.zeros(ss_size)
     for state_n in range(ss_size):
-        likelihood_data = e(obs)[state_n]
+        likelihood_data = e(obs)[state_c]
         # beta_n = np.ma.log(beta_next[state_n]).filled(-np.infty)
         beta_n = beta_next[state_n] # our beta terms are already log
         if np.isinf(likelihood_data) or np.isinf(beta_n):
@@ -90,8 +90,8 @@ def compute_transition_vector(pi,state_n,time_c,time_n):
     ss_size = len(states)
     transition = np.ones(ss_size) * (-np.infty)
     for state_c in range(ss_size):
-        if is_pi_zero(time_c,time_n,state_c,state_n,states):
-            continue
+        # if is_pi_zero(time_c,time_n,state_c,state_n,states):
+        #     continue
         transition[state_c] = pi([time_c,time_n])[state_c,state_n]
     return transition
 
@@ -128,7 +128,7 @@ def backward_sampling_hmm(*args,**kwargs):
         i += 1
         time_index_next = time_index_current + 1
         time_next = time_grid[time_index_next]
-        obs = [O[time_current,time_next],time_current]
+        # obs = [O[time_current,time_next],time_current]
 
         # --> sample_{t+1} [get the previous sample index] <--
         next_sample = samples[:,time_index_next][0]
@@ -143,29 +143,29 @@ def backward_sampling_hmm(*args,**kwargs):
         # alpha_n = alpha_at_next[next_sample]
 
         # --> alpha_t [not normalized] <--
-        alpha_at_current = log_alphas[time_index_current,:]
-        alpha_c = alpha_at_current
+        alpha_c = log_alphas[time_index_current,:]
+        # alpha_c = alpha_c - logsumexp(alpha_c)
 
         # --> transition vector <--
-        transition = compute_transition_vector(pi,next_sample,time_current,time_next)
+        log_transition = compute_transition_vector(pi,next_sample,time_current,time_next)
         
         # --> likelihood of data, a scalar <--
         # likelihood_data = np.ma.log([e(obs)[next_sample]]).filled(-np.infty)
 
         # altogether.
-        # print(alpha_c, transition)#,likelihood_data,beta_n,alpha_n)
-        # sampling_prob = (alpha_c * transition) * (likelihood_data) * (beta_n / alpha_n)
-        sampling_prob = np.exp(alpha_c + transition)
+        log_samp_prob = alpha_c + log_transition
+        log_samp_prob -= logsumexp(log_samp_prob)
+        sampling_prob = np.exp(log_samp_prob)
         sampling_prob /= np.sum(sampling_prob)
-        # print('time_current',time_current)
-        # print('samp_prob',sampling_prob)
+        print('time_current',time_current)
+        print('samp_prob',sampling_prob)
 
         time_current_p,time_next_p = round(time_current,3),round(time_next,3)
         time_str = "({},{})".format(time_current_p,time_next_p)
 
         s = np.where(npr.multinomial(num_of_samples,sampling_prob) == 1)[0][0]
         samples[:,time_index_current] = s
-        # print('(sample,time_current):',pi.state_space[s],time_current)
+        print('(sample,time_current):',pi.state_space[s],time_current)
 
     
     # translate the sample back
@@ -190,7 +190,7 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
     """
     num_of_states = kwargs['num_of_states']
     time_grid = kwargs['time_grid']
-    num_of_steps = len(time_grid) # |W|
+    num_of_steps = len(time_grid) - 1 # |W|
     log_alphas = np.zeros((num_of_steps,num_of_states),dtype=np.float)
     log_viterbi = np.zeros((num_of_steps,num_of_states),dtype=np.float)
     backpointers = np.zeros((num_of_steps),dtype=np.float)
@@ -202,56 +202,140 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
 
     # init forward pass
     time_next = time_grid[0] # == 0 (or t_start)
+    obs = [O[0,time_next],[0,0]] # I think this is useless unless we have obs @ time 0
+    ll_obs = 1 # e(obs)[0] # how to include obs
     for state_idx in range(num_of_states):
-        obs = [O[0,time_next],0]
         ll_init =  np.ma.log([init_probs.l(state_idx)]).filled(-np.infty)
-        # print('init_prob.l({}): {:3f}'.format(state_idx,ll_init[0]))
-        ll_obs = e(obs)[state_idx]
-        # print(ll_obs)
         log_alphas[0,state_idx] = ll_init + ll_obs
         log_viterbi[0,state_idx] = ll_init + ll_obs
-    
+    log_alphas[0,:] -= np.max(log_alphas[0,:])
     # print("log_alphas[0,:]",log_alphas[0,:])
     # exit()
+    trans_vec = np.zeros(log_alphas[0,:].shape)
+    print(npt(pi.state_space))
     print("|W| = {}".format(len(time_grid)))
-    for time_index,time_c in enumerate(time_grid[0:-1]): # {w_0,...,w_{|W|-1}}
-        alpha_index = time_index + 1
-        time_n = time_grid[alpha_index] # update the next time.
-        obs = [O[time_c,time_n],time_c]
+    # start at w_0 or w_1?
+    for time_p_index,time_c in enumerate(time_grid[1:-1]): # \{ w_0,...,w_{|W|-1} \}
+        # time_p_index \in {0,...,|W| - 2}
+        time_index = time_p_index + 1 # \in {1,..,|W| - 1}
+        time_p = time_grid[time_index - 1]
+        time_c = time_grid[time_index]
+        time_n = time_grid[time_index + 1]            
+        """
+        \{ w_0 = 0, w_1, ..., w_{|W|} \} = W
+        
+        P(v_i, l_i | v_{i-1}, l_{i-1}, x_{i}, w_{i+1}, w_{i})
+        \times
+        P( v_{i-1}, l_{i-1}, x_{1:i-1}, w_{1:i})
+        =
+        P(v_i, l_i, v_{i-1}, l_{i-1},  w_{1:i}, x_{1:i} | w_{i+1})
+        
+        -=-=-> Marginalize out (v_{i-1},l_{i-1}) <-=-=-=-
+
+        P(v_i, l_i, w_{1:i}, x_{1:i} | w_{i+1})
+        
+        -=-=-=-=-=- EQUIVALENT IN CODE -=-=-=-=-=-
+
+        time_p = i - 1
+        time_c = i
+        time_n = i + 1
+
+        state_c = (v_{i-1},l_{i-1})
+        state_n = (v_i,l_i)
+
+        -=-=-=- Say -=-=-=-=- 
+
+        i = { 0, ..., |W| - 1 }
+
+        time_c = w_{0} ... w_{|W|-1}
+
+        time_n = w_{1} ... w_{|W|}
+
+        \delta w_0 = w_1 - w_0; (w_1,w_0)
+        
+        .
+        .
+        .
+
+        \delta w_{|W|-1} = w_{|W|} - w_{|W|-1}
+
+        Then i \in {1,...,|W|-1}
+        and i+1 \in {2,...,|W|}
+
+        """
+        # print("(w_i,w_{i+1})",time_c,time_n)
+        obs = [O[time_c,time_n],[time_c,time_n]]
         for state_c in range(num_of_states):
-            log_obs = e(obs)[state_c] # used to be state_n
+            # print(state_c)
+            log_obs = e(obs)[state_c]
             # print("--> ff: log_obs",log_obs)
             if np.isinf(log_obs):
+                log_alphas[time_index,state_c] = -np.infty
                 continue
-            for state_n in range(num_of_states):
-                if is_pi_zero(time_c,time_n,state_c,state_n,states):
-                    continue
-                log_alpha = log_alphas[alpha_index-1,state_c]
+            #print('lati-1',time_index-1,log_alphas[time_index-1,:])
+            log_transitions = np.ones(num_of_states) * -np.infty
+            for state_p in range(num_of_states):
+                # if state_c == 1:
+                #     print(log_alphas[time_index-1,state_p])
+                # print(state_c,state_n)
+                # if is_pi_zero(time_c,time_n,state_p,state_c,states):
+                #     continue
+                log_alpha = log_alphas[time_index-1,state_p]
                 if np.isinf(log_alpha):
                     continue
-                log_transition = pi([time_c,time_n])[state_c,state_n]
-                # print('ff',log_alpha, log_transition)
-                alpha_new = np.exp(log_alpha + log_transition + log_obs)
-                log_alphas[alpha_index,state_n] += alpha_new
-        log_alphas[alpha_index,:] = np.ma.log([log_alphas[alpha_index,:]]).filled(-np.infty)
+                log_transitions[state_p] = pi([time_p,time_c])[state_p,state_c]
+                # alpha_new = np.exp(log_alpha + log_transition)
+                # trans_vec[state_c] += np.exp(log_transition)
+                # log_alphas[time_index,state_c] += alpha_new
+                # print("log_alphas[alpha_index,state_c]: {}".format(log_alphas[alpha_index,state_c]))
+            # this is _wrong_ since it normalizes over the "s_{i-1}" in P(s_i | s_{i-1})
+            # if we were to normalized it should be over the "s_i" term.
+            # this happens when we do "- np.max(log_alpha)".
+            # log_transitions -= np.max(log_transitions)
+            log_alpha_current = log_alphas[time_index-1,:] + log_transitions + log_obs
+            log_alphas[time_index,state_c] = logsumexp(log_alpha_current)
+            # print(log_alphas[time_index,:])
+            # if state_c > 1:
+            #     exit()
+            # print(log_alphas[time_index,state_c])
+            # log_alphas[time_index,state_c] += log_obs
+        log_alphas[time_index,:] -= np.max(log_alphas[time_index,:])
+
+    # print(log_alphas)
+    # plot_sticks(log_alphas[-1,:])
+    # print(np.exp(log_alphas - np.log(np.sum(np.exp(log_alphas)))))
     backpath = None
     output_prob = np.sum(np.exp(log_alphas[-1,:]))
     return log_alphas,output_prob,log_viterbi,backpath
 
-def is_pi_zero(time_c,time_n,state_c,state_n,states):
-    v_c,l_c = states[state_c] # (state,time_of_jump)
-    v_n,l_n = states[state_n]
-    if (l_c > l_n): 
+def plot_sticks(log_alphas_at_time):
+    import matplotlib.pyplot as plt
+    x_grid = np.arange(len(log_alphas_at_time))
+    plt.plot(x_grid,log_alphas_at_time,'+-')
+    plt.show()
+    
+
+def logsumexp(nd_array):
+    return np.log(np.sum(np.exp(nd_array)))
+
+def np_log(number):
+    return np.ma.log([number]).filled(-np.infty)
+def is_pi_zero(time_c,time_n,state_p,state_c,states):
+    v_p,l_p = states[state_p] # (state,time_of_jump)
+    v_c,l_c = states[state_c]
+    if (l_p > l_c): 
         return True
-    if (l_n <= time_c) and (state_c != state_n):
+    # you can't jump into the past unless you're already there
+    if (l_c <= time_c) and (state_c != state_p):
         return True
-    if (l_n < time_n) and (state_c != state_n):
+    # you can't jumpy into the past... again... check #2! 
+    if (l_c < time_n) and (state_c != state_p):
         return True
-    if (l_n > time_n):
+    if (l_c > time_n):
         return True
-    if (time_n < l_c):
+    if (l_p > time_n):
         return True
-    #print("(v_c,l_c) -> (v_n,l_n) : ({},{}) -> ({},{})".format(v_c,l_c,v_n,l_n))
+    #print("(v_p,l_p) -> (v_c,l_c) : ({},{}) -> ({},{})".format(v_p,l_p,v_c,l_c))
     return False
     
 def do_we_thin(state_space,sc_idx,sn_idx,delta_w):
