@@ -1,3 +1,14 @@
+def write_ndarray_list_to_debug_file(params,debug_fn='debug_params.txt'):
+    w_str = ''
+    for key,ndarray in params.items():
+        w_str += '-------\n'
+        w_str += key + '\n'
+        w_str += str(ndarray)
+        w_str += '\n\n'
+    with open(debug_fn,'w') as f:
+        f.write(w_str)
+    return
+    
 def isiterable(p_object):
     try:
         it = iter(p_object)

@@ -96,6 +96,8 @@ def smjp_transition(s_prev_idx,s_curr_idx,observation,augmented_state_space,A,B)
     true_condition_3 = (l_curr == l_prev) and (v_curr == v_prev) and (time_p == time_c)
     # print(time_p == time_c,time_p,time_c)
     
+    # print(error_conditions,invalid_conditions,\
+        # true_condition_1,true_condition_2,true_condition_3)
     # "<="? or "<" for (l_prev ?? time_p)
     """
     I think we need the allow the equality due to self transitions.
@@ -128,7 +130,10 @@ def smjp_transition(s_prev_idx,s_curr_idx,observation,augmented_state_space,A,B)
     if l_curr == time_p:
         # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) : note below is _not_ a probability.
         log_A = np.ma.log( [ A(t_hold)[v_prev,v_curr] ] ).filled(-np.infty)[0]
-        log_probability += log_A
+        log_probability = log_A - l_ratio_B
+        # print("(time_p,time_c,t_hold): ({:.3f},{:.3f},{:.3f})".format(time_p,time_c,t_hold))
+        # print("-------- (A_n,B,lp): ({:.3f},{:.3f},{:.3f}) ---------".format(np.exp(log_A),np.exp(l_ratio_B),np.exp(log_probability)))
+
         # = A(t_hold)[v_curr,v_next] / B(t_hold)[v_curr]
     else:
         # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) = 1 if v_i == v_{i-1}
@@ -150,13 +155,27 @@ def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create,normali
         ## its a sum-of-probs;
         ## "log" method is helpful when its a prod-of-probs
         # (e.g. not time for "log-sum-exp")
+        
         rate = 0
         for s_next in state_space:
-            # skip the same state (goal of this code snippet)
-            if s_next == s_curr: continue 
             hazard_rate = h_create(s_curr,s_next)
             rate += hazard_rate.l(t_hold)
-        # we don't normalized; if we do the result is incorrect.
+        return rate
+        # rate_of_leaving = 0
+        # leaving_rates_by_state = {state:0 for state in state_space}
+        # for index,s_curr_prime in enumerate(state_space):
+        #     rate_of_leaving = 0
+        #     for s_next in state_space:
+        #         hazard_rate = h_create(s_curr_prime,s_next)
+        #         rate_of_leaving += hazard_rate.l(t_hold)
+        #     leaving_rates_by_state[s_curr_prime] = rate_of_leaving
+        # lrbs = list(leaving_rates_by_state.values())
+        # rate = leaving_rates_by_state[s_curr]
+        # print(rate)
+        
+        """
+        We used to _not_ normalize, but now we normalize because of the transition probability
+        """
         # hazard_rate = h_create(s_curr,s_curr)
         # current_rate =  hazard_rate.l(t_hold)
         # rate = rate / (rate + current_rate) # normalize over ~all~
@@ -164,14 +183,14 @@ def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create,normali
     else:  # return Prob of leaving s_curr for s_next; normalized over s_next
         hazard_rate = h_create(s_curr,s_next)
         rate = hazard_rate.l(t_hold)
-        if normalized:
-            normalization_rate = rate
-            for s_next in state_space:
-                # skip the same state (goal of this code snippet)
-                if s_next == s_curr: continue 
-                hazard_rate = h_create(s_curr,s_next)
-                normalization_rate += hazard_rate.l(t_hold)
-            rate /= normalization_rate
+        # if normalized:
+        #     normalization_rate = rate
+        #     for s_next in state_space:
+        #         # skip the same state (goal of this code snippet)
+        #         if s_next == s_curr: continue 
+        #         hazard_rate = h_create(s_curr,s_next)
+        #         normalization_rate += hazard_rate.l(t_hold)
+        #     rate /= normalization_rate
         return rate
         
 
@@ -188,6 +207,9 @@ def compute_likelihood_obs(x,p_x,state_space,v_curr,inv_temp):
     likelihood_x = likelihood_x**inv_temp
     return likelihood_x
 
+def get_final_grid_time_from_state_space(state_space,time_col):
+    return np.max(state_space[:,time_col])
+
 def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
                         s_curr,s_next,observation,aug_state_space):
     """
@@ -202,7 +224,8 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
     v_curr,l_curr = aug_state_space[s_curr]
     t_hold = time_n - l_curr
     t_hold_c = time_c - l_curr
-
+    final_grid_time = get_final_grid_time_from_state_space(aug_state_space,1)
+    
     invalid_conditions = (time_c >= time_n)
     if invalid_conditions:
         return -np.infty
@@ -244,6 +267,7 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
         likelihood_x = 1
     else:
         likelihood_x = compute_likelihood_obs(x,p_x,state_space,v_curr,inv_temp)
+    likelihood_x = 1
     #print("where??")
 
     # P( \delta w_i | v_i, l_i )
@@ -277,8 +301,11 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
     """
     
     
-    likelihood_delta_w = p_w.l([t_hold_c,t_hold],v_curr)
-
+    if not np.isclose(final_grid_time,time_n):
+        likelihood_delta_w = p_w.l([t_hold_c,t_hold],v_curr)
+    else: # the final event is not a poisson process
+        likelihood_delta_w = p_w.l([t_hold_c,t_hold],v_curr,is_poisson_event=False)
+    # print("Pw",likelihood_delta_w)
     likelihood = likelihood_x * likelihood_delta_w
     log_likelihood = np.ma.log([likelihood]).filled(-np.infty)[0]
 
@@ -462,16 +489,19 @@ class PoissonProcess(object):
 
     def sample(self,interval,current_state):
         tau = interval[1] - interval[0]
+        """
+        interval = [time_current,time_next]
+        """
         # print('tau',tau)
         samples = []
         for state in self.state_space:
             if tau < 0:
                 print(tau)
                 print(self.state_space)
+                exit()
             mean = self.mean_function( 0, tau, current_state, state )
-            # print('mean',mean)
             N = npr.poisson( lam = mean )
-            # print('N',N)
+            # print('(mean, tau, N): ({},{},{})'.format(mean,tau,N))
             samples_by_state = []
 
             # --> version 1: force the # samples = N ~ Poisson ( mean ) <--
@@ -498,22 +528,37 @@ class PoissonProcess(object):
         # print('samples',samples)
         return samples
 
-    def l(self,*args):
-        return self.likelihood(*args)
+    def l(self,*args,**kwargs):
+        return self.likelihood(*args,**kwargs)
 
-    def likelihood(self,interval,current_state):
-        tau = interval[1] - interval[0]
+    def likelihood(self,interval,current_state,is_poisson_event=True):
+        tau = interval[1]
+        """
+        interval = ["current_hold_time", "next_hold_time"]
+        tau \neq delta w.... we
+
+        delta w_i = interval[1] - interval[0]
+        we want the total hold time though...
+        """
         # A_{s,s'}(\tau) is the hazard function
         # = [\sum_{s'\in S} A_{s,s'}(\tau)] * exp\{ \int_{l_i}^{l_i + \delta w_i} A_s(\tau) \}
         # -----------------------------
         # -=-=-=-> version 1 <-=-=-=-=-
         # -----------------------------
+        if not is_poisson_event:
+            log_exp_term = 0
+            for next_state in self.state_space:
+                log_exp_term += self.mean_function(0, tau,current_state,next_state)
+            return np.exp(-log_exp_term)
+
         front_term = 0
         log_exp_term = 0
         for next_state in self.state_space:
             front_term += self.hazard_function(tau)[current_state,next_state]
             log_exp_term += self.mean_function( interval[0], interval[1], current_state, \
                                                 next_state)
+        # print("front_term",front_term)
+        # print("exp_term",np.exp(-log_exp_term))
         likelihood = front_term * np.exp(-log_exp_term)
         return likelihood
 
@@ -564,6 +609,12 @@ def smjp_hazard_sampler_unset(state_space,h_create,hold_time,current_state,next_
         return sampled_state
 
 def enumerate_state_space(grid,states):
+    """
+    --> we do not include the final jump time <--
+    it is not a poisson event
+    """
+    
+    grid = grid[:-1]
     if 0 not in grid: # it shouldn't be i think
         grid = [0] + grid
     # # create all the "delta w_i" terms
@@ -700,7 +751,7 @@ def sample_smjp_trajectory_prior_2(A, B, pi_0, pi, t_start = 0):
 # posterior smjp trajectory sampler; main function in Gibbs loop
 #
 
-def sample_smjp_trajectory_posterior(W,data,state_space,hazard_A,hazard_B,smjp_e,t_end):
+def sample_smjp_trajectory_posterior(W,data,state_space,hazard_A,hazard_B,smjp_e,t_end,u_str):
     # we might need to mangle the "data" to align with the time intervals;
     # 1.) what about no observations in a given time? O[t_i,t_{i+1}] = []
     # 2.) what about multiple obs for a given time? O[t_i,t_{i+1}] = [o_k,o_k+1,...]
@@ -747,6 +798,7 @@ def sample_smjp_trajectory_posterior(W,data,state_space,hazard_A,hazard_B,smjp_e
                 'pi_0': pi_0,
                 'time_grid': W,
                 'sample_dimension': 1,
+                'uuid_str':u_str,
                 }
     
     hmm = fast_HiddenMarkovModel([],**hmm_init)

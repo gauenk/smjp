@@ -171,10 +171,20 @@ def experiment_2( likelihood_power = 1. ):
     scale_mat = np.ones((s_size,s_size)) 
     scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,omega)
     scale_mat_hat = create_upperbound_scale(shape_mat,scale_mat,omega-1)
+    debug_params = {'shape_mat':shape_mat,
+                    'scale_mat':scale_mat,
+                    'scale_mat_tilde':scale_mat_tilde,
+                    'scale_mat_hat':scale_mat_hat,
+    }
 
+    write_ndarray_list_to_debug_file(debug_params) 
+
+    
     # hazard A needs a sampler for the prior
     weibull_hazard_create_A = partial(weibull_hazard_create_unset,shape_mat,scale_mat,state_space)
     weibull_hazard_sampler_A = partial(smjp_hazard_sampler_unset,state_space,weibull_hazard_create_A)
+    weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,scale_mat_tilde,state_space)
+    weibull_hazard_sampler_B = partial(smjp_hazard_sampler_unset,state_space,weibull_hazard_create_B)
 
     # hazard A_hat needed for the grid sampler
     weibull_hazard_create_A_hat = partial(weibull_hazard_create_unset,shape_mat,scale_mat_hat,state_space)
@@ -185,7 +195,7 @@ def experiment_2( likelihood_power = 1. ):
 
     hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A,sampler=weibull_hazard_sampler_A)
     hazard_A_hat = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A_hat,sampler=weibull_hazard_sampler_A_hat)
-    hazard_B = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_B)
+    hazard_B = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_B,sampler=weibull_hazard_sampler_B)
 
 
     # ------------------------------------------------------------
@@ -200,7 +210,7 @@ def experiment_2( likelihood_power = 1. ):
     poisson_process_A_hat = PoissonProcess(state_space,None,hazard_A_hat,pp_mean_params_A_hat)
     pp_mean_params_B = {'shape':shape_mat,'scale':scale_mat_tilde}
     poisson_process_B = PoissonProcess(state_space,None,hazard_B,pp_mean_params_B)
-
+    
     # -------------------------------------------------------------------------
     #
     # generate observations from data
@@ -235,6 +245,11 @@ def experiment_2( likelihood_power = 1. ):
     pi_0 = MultinomialDistribution({'prob_vector': np.ones(s_size)/s_size,\
                                     'translation':state_space})
     V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
+    print("--------------")
+    print(V)
+    print(T)
+    print("|T| = {}".format(len(T)))
+    print("--------------")
 
     save_iter = 300
     if True: #False:
@@ -250,8 +265,18 @@ def experiment_2( likelihood_power = 1. ):
             # W = np.arange(10)
             # while len(W) > 9:
             #     W = sample_smjp_event_times(poisson_process_A,V,T)
+            """
+            make sure we are throwing away times.
+            """
+            print(W)
 
-            V,T,prob = sample_smjp_trajectory_posterior(W,data,*smjp_sampler_input)
+            p_u_str = '{}_{}'.format(uuid_str,i)
+            V,T,prob = sample_smjp_trajectory_posterior(W,data,*smjp_sampler_input,p_u_str)
+            print("---------")
+            print(V)
+            print(T)
+            print("|T| = {}".format(len(T)))
+            print("---------")
             aggregate['W'].append(W)
             aggregate['V'].append(V)
             aggregate['T'].append(T)
@@ -265,19 +290,19 @@ def experiment_2( likelihood_power = 1. ):
             print('prior',np.c_[_V,_T])
             print("i = {}".format(i))
 
-            if (i % save_iter) == 0:
+            if (i % save_iter) == 0 and ( i > 0 ):
                 print("saving current samples to file.")
                 save_current_results(aggregate,aggregate_prior,uuid_str,i)
 
         # save to memory
-        pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,'uuid_str':uuid_str}
-        with open('results_{}.pkl'.format(uuid_str),'wb') as f:
-            pickle.dump(pickle_mem_dump,f)
+        # pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,'uuid_str':uuid_str}
+        # with open('results_{}.pkl'.format(uuid_str),'wb') as f:
+        #     pickle.dump(pickle_mem_dump,f)
     else:
         # load to memory
         # filename = use_filepicker()
         # results_e1.pkl
-        with open('results_e2_r00.pkl','rb') as f:
+        with open('results_scholar_v3.pkl','rb') as f:
             pickle_mem_dump = pickle.load(f)
         aggregate = pickle_mem_dump['agg']
         aggregate_prior = pickle_mem_dump['agg_prior']
@@ -344,3 +369,16 @@ def save_current_results(aggregate,aggregate_prior,uuid_str,n_iters):
     pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,'uuid_str':uuid_str}
     with open('results_{}_{}.pkl'.format(uuid_str,n_iters),'wb') as f:
         pickle.dump(pickle_mem_dump,f)
+
+"""
+TODO: 
+
+-=-=- 0. Verify the alpha shape -=-=-
+- 
+
+-=-=- 1. verify the W's -=-=-=-
+-generate grid via A and B
+- use A_hat on both grids
+-take likelihoods
+
+"""
