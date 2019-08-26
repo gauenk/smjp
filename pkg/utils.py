@@ -1,3 +1,10 @@
+def logsumexp(nd_array):
+    return np.ma.log([np.sum(np.exp(nd_array))])[0]
+
+
+def np_log(number):
+    return np.ma.log([number]).filled(-np.infty)
+
 def write_ndarray_list_to_debug_file(params,debug_fn='debug_params.txt'):
     w_str = ''
     for key,ndarray in params.items():

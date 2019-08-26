@@ -25,7 +25,7 @@ def smjp_transition(s_prev_idx,s_curr_idx,observation,augmented_state_space,A,B)
     time_p,time_c = observation
     v_prev,l_prev = augmented_state_space[s_prev_idx]
     v_curr,l_curr = augmented_state_space[s_curr_idx]
-    t_hold = time_c - l_curr
+    t_hold = time_c - l_prev
 
     # if t_hold < 0:
     #     return -np.infty
@@ -86,8 +86,9 @@ def smjp_transition(s_prev_idx,s_curr_idx,observation,augmented_state_space,A,B)
     # if (l_curr < time_c) and (s_prev_idx != s_curr_idx):
     #     return -np.infty
 
+    
     error_conditions = (time_p >= time_c)
-    invalid_conditions = (l_prev > l_curr)
+    invalid_conditions = (l_prev > l_curr) or (t_hold <= 0)
     # the "jump" condition
     true_condition_1 = (l_curr == time_c) and (l_prev <= time_p)
     # the "thin" condition
@@ -123,8 +124,8 @@ def smjp_transition(s_prev_idx,s_curr_idx,observation,augmented_state_space,A,B)
         return -np.infty
     
     # P(l_i | l_{i-1}, \delta w_i)
-    l_ratio_A = np.ma.log([ A(t_hold)[v_curr] ]).filled(-np.infty)[0]
-    l_ratio_B = np.ma.log([ B(t_hold)[v_curr] ]).filled(-np.infty)[0]
+    l_ratio_A = np.ma.log([ A(t_hold)[v_prev] ]).filled(-np.infty)[0]
+    l_ratio_B = np.ma.log([ B(t_hold)[v_prev] ]).filled(-np.infty)[0]
     l_ratio = l_ratio_A - l_ratio_B
     assert l_ratio <= 0, "the ratio of hazard functions should be <= 1"
     if l_curr == time_p:
@@ -224,8 +225,9 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
     v_curr,l_curr = aug_state_space[s_curr]
     t_hold = time_n - l_curr
     t_hold_c = time_c - l_curr
-    final_grid_time = get_final_grid_time_from_state_space(aug_state_space,1)
-    
+    # final_grid_time = get_final_grid_time_from_state_space(aug_state_space,1)
+    final_grid_time = 2.0
+
     invalid_conditions = (time_c >= time_n)
     if invalid_conditions:
         return -np.infty
@@ -254,6 +256,7 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
     if t_hold <= 0: # we want t_hold >= 0
         return -np.infty
     if t_hold_c < 0:
+        return -np.infty
         print(times)
         print(t_hold_c)
         print(l_curr)
@@ -548,9 +551,25 @@ class PoissonProcess(object):
         if not is_poisson_event:
             log_exp_term = 0
             for next_state in self.state_space:
-                log_exp_term += self.mean_function(0, tau,current_state,next_state)
+                log_exp_term += self.mean_function(0, tau, current_state,next_state)
             return np.exp(-log_exp_term)
 
+
+        # --> version 2: normalized across current_state <---
+        # intvl = interval
+        # front_term = 0
+        # log_exp_term = 0
+        # pp_ll = np.zeros(len(self.state_space))
+        # for index_c,state_c in enumerate(self.state_space):
+        #     for state_n in self.state_space:
+        #         front_term += self.hazard_function(tau)[state_c,state_n]
+        #         log_exp_term += self.mean_function(intvl[0],intvl[1],state_c,state_n)
+        #     ll = np_log(front_term) - log_exp_term
+        #     pp_ll[index_c] = ll
+        # pp_ll -= logsumexp(pp_ll)
+        # state_select = self.state_space.index(current_state)
+        # return np.exp(pp_ll[state_select])
+        # --> version 1: not normalized across current_state <---
         front_term = 0
         log_exp_term = 0
         for next_state in self.state_space:

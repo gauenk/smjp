@@ -1,6 +1,7 @@
 import numpy as np
 import numpy.random as npr
 from numpy import transpose as npt
+from pkg.utils import *
 
 
 class fast_HiddenMarkovModel(object):
@@ -92,7 +93,7 @@ def compute_transition_vector(pi,state_n,time_c,time_n):
     states = pi.state_space
     ss_size = len(states)
     transition = np.ones(ss_size) * (-np.infty)
-    print(time_c,time_n,pi.state_space[state_n])
+    # print(time_c,time_n,pi.state_space[state_n])
     for state_c in range(ss_size):
         # if is_pi_zero(time_c,time_n,state_c,state_n,states):
         #     continue
@@ -150,11 +151,12 @@ def backward_sampling_hmm(*args,**kwargs):
 
         # --> alpha_t [not normalized] <--
         alpha_c = log_alphas[time_index_current,:]
-        # alpha_c = alpha_c - logsumexp(alpha_c)
+        alpha_c = alpha_c - logsumexp(alpha_c)
 
         # --> transition vector <--
+        log_transition_mat = compute_transition_matrix(pi,time_current,time_next)
         log_transition = compute_transition_vector(pi,next_sample,time_current,time_next)
-        
+
         # print('lt')
         # print(log_transition)
 
@@ -162,14 +164,15 @@ def backward_sampling_hmm(*args,**kwargs):
         # likelihood_data = np.ma.log([e(obs)[next_sample]]).filled(-np.infty)
 
         # altogether.
-        log_samp_prob = alpha_c + log_transition
+        #log_samp_prob = alpha_c + log_transition
+        log_samp_prob = alpha_c + log_transition_mat[:,next_sample]
         log_samp_prob -= logsumexp(log_samp_prob)
         sampling_prob = np.exp(log_samp_prob)
         sampling_prob /= np.sum(sampling_prob)
         # print('time_current',time_current)
-        print('samp_prob',sampling_prob)
-        plot_sticks_save_name = 'plot_sticks/{}_{}.npy'.format(u_str,time_current)
-        plot_sticks(sampling_prob,pi.state_space,True,plot_sticks_save_name)
+        # print('samp_prob',sampling_prob)
+        # plot_sticks_save_name = 'plot_sticks/{}_{}.npy'.format(u_str,time_current)
+        # plot_sticks(sampling_prob,pi.state_space,True,plot_sticks_save_name)
 
 
         time_current_p,time_next_p = round(time_current,3),round(time_next,3)
@@ -225,7 +228,7 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
         init_probs_l[state_idx] = ll_init
         log_alphas[0,state_idx] = ll_init + ll_obs
         log_viterbi[0,state_idx] = ll_init + ll_obs
-    log_alphas[0,:] -= np.max(log_alphas[0,:])
+    log_alphas[0,:] -= logsumexp(log_alphas[0,:])
     # print("log_alphas[0,:]",log_alphas[0,:])
     # exit()
     trans_vec = np.zeros(log_alphas[0,:].shape)
@@ -287,68 +290,60 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
         #
         # compute log_transition matrix, normalized over "state_c"
         #
+        log_transition_mat = compute_transition_matrix(pi,time_p,time_c)
+        # print(log_transition_mat)
         
-        log_transition_mat = np.ones(num_of_states**2).reshape(num_of_states,num_of_states) * (-np.infty)
-        for state_p in range(num_of_states):
-            for state_c in range(num_of_states):
-                l_t = pi([time_p,time_c])[state_p,state_c]
-                log_transition_mat[state_p,state_c] = l_t
-            is_all_infty = np.all(np.isinf(log_transition_mat[state_p,:]))
-            if not is_all_infty:
-                log_transition_mat[state_p,:] -= np.max(log_transition_mat[state_p,:])
+        # log_transition_mat = np.ones(num_of_states**2).reshape(num_of_states,num_of_states) * (-np.infty)
+        # for state_p in range(num_of_states):
+        #     for state_c in range(num_of_states):
+        #         l_t = pi([time_p,time_c])[state_p,state_c]
+        #         log_transition_mat[state_p,state_c] = l_t
+        #     is_all_infty = np.all(np.isinf(log_transition_mat[state_p,:]))
+        #     if not is_all_infty:
+        #         #log_transition_mat[state_p,:] -= np.max(log_transition_mat[state_p,:])
+        #         log_transition_mat[state_p,:] -= logsumexp(log_transition_mat[state_p,:])
 
-        #print(log_transition_mat.shape)
-        # print("(w_i,w_{i+1})",time_c,time_n)
+        #
+        # compute the alpha_next probabilities
+        #
+
         obs = [O[time_c,time_n],[time_c,time_n]]
         for state_c in range(num_of_states):
-            # print(state_c)
             log_obs = e(obs)[state_c]
-            # print("--> ff: log_obs",log_obs)
             if np.isinf(log_obs):
                 log_alphas[time_index,state_c] = -np.infty
                 continue
-            #print('lati-1',time_index-1,log_alphas[time_index-1,:])
-            log_transitions = np.ones(num_of_states) * -np.infty
-            for state_p in range(num_of_states):
-                # if state_c == 1:
-                #     print(log_alphas[time_index-1,state_p])
-                # print(state_c,state_n)
-                # if is_pi_zero(time_c,time_n,state_p,state_c,states):
-                #     continue
-                log_alpha = log_alphas[time_index-1,state_p]
-                if np.isinf(log_alpha):
-                    continue
-                #log_transitions[state_p] = pi([time_p,time_c])[state_p,state_c]
-                log_transitions[state_p] = log_transition_mat[state_p,state_c]
-                # alpha_new = np.exp(log_alpha + log_transition)
-                # trans_vec[state_c] += np.exp(log_transition)
-                # log_alphas[time_index,state_c] += alpha_new
-                # print("log_alphas[alpha_index,state_c]: {}".format(log_alphas[alpha_index,state_c]))
-            # this is _wrong_ since it normalizes over the "s_{i-1}" in P(s_i | s_{i-1})
-            # if we were to normalized it should be over the "s_i" term.
-            # this happens when we do "- np.max(log_alpha)".
-            # log_transitions -= np.max(log_transitions)
-            # print(log_transitions,pi.state_space[state_c],'{:.3f},{:.3f}'.format(time_p,time_c,time_n))
-            log_alpha_current = log_alphas[time_index-1,:] + log_transitions
-
-            # print('lse',logsumexp(log_alpha_current),'lobs',log_obs)
+            log_alpha_current = log_alphas[time_index-1,:] + log_transition_mat[:,state_c]
+            # print("log_obs",log_obs)
+            # print(logsumexp(log_alpha_current))
             log_alphas[time_index,state_c] = logsumexp(log_alpha_current) + log_obs
-            # print(log_alphas[time_index,:])
-            # if state_c > 1:
-            #     exit()
-            # print(log_alphas[time_index,state_c])
-            # log_alphas[time_index,state_c] += log_obs
-        log_alphas[time_index,:] -= np.max(log_alphas[time_index,:])
+        log_alphas[time_index,:] -= logsumexp(log_alphas[time_index,:])
+        #log_alphas[time_index,:] -= np.max(log_alphas[time_index,:])
         
     # print(len(pi.state_space))
-    # print(log_alphas)
     # print(log_alphas.shape)
-    plot_sticks_save_name = 'plot_sticks/{}_{}.npy'.format(u_str,time_grid[-1])
-    plot_sticks(log_alphas[-1,:],pi.state_space,True,plot_sticks_save_name)
+    # plot_sticks_save_name = 'plot_sticks/{}_{}.npy'.format(u_str,time_grid[-2])
+    # plot_sticks(log_alphas[-2,:],pi.state_space,False,plot_sticks_save_name)
+    # plot_sticks(log_alphas[-1,:],pi.state_space,False,plot_sticks_save_name)
+    # print(log_alphas)
+
     # print(np.exp(log_alphas - np.log(np.sum(np.exp(log_alphas)))))
     backpath = None
     output_prob = np.sum(np.exp(log_alphas[-1,:]))
     return log_alphas,output_prob,log_viterbi,backpath
+
+def compute_transition_matrix(pi,time_p,time_c):
+    num_of_states = len(pi.state_space)
+    log_transition_mat = np.ones(num_of_states**2).\
+                         reshape(num_of_states,num_of_states) * (-np.infty)
+    for state_p in range(num_of_states):
+        for state_c in range(num_of_states):
+            l_t = pi([time_p,time_c])[state_p,state_c]
+            log_transition_mat[state_p,state_c] = l_t
+        is_all_infty = np.all(np.isinf(log_transition_mat[state_p,:]))
+        if not is_all_infty:
+            log_transition_mat[state_p,:] -= logsumexp(log_transition_mat[state_p,:])
+    return log_transition_mat
 
 def plot_sticks(log_alphas_at_time,aug_state_space,save=False,save_name=None):
     import matplotlib.pyplot as plt
@@ -360,11 +355,6 @@ def plot_sticks(log_alphas_at_time,aug_state_space,save=False,save_name=None):
     else:
         plt.show()
 
-def logsumexp(nd_array):
-    return np.log(np.sum(np.exp(nd_array)))
-
-def np_log(number):
-    return np.ma.log([number]).filled(-np.infty)
 def is_pi_zero(time_c,time_n,state_p,state_c,states):
     v_p,l_p = states[state_p] # (state,time_of_jump)
     v_c,l_c = states[state_c]

@@ -167,7 +167,9 @@ def experiment_2( likelihood_power = 1. ):
     #
     # ------------------------------------------
 
-    shape_mat = npr.uniform(0.6,3.0,s_size**2).reshape((s_size,s_size))
+    # shape_mat = npr.uniform(0.6,3.0,s_size**2).reshape((s_size,s_size))
+    # shape_mat = npr.uniform(.8,.9,s_size**2).reshape((s_size,s_size))
+    shape_mat = npr.uniform(2.1,2.2,s_size**2).reshape((s_size,s_size))
     scale_mat = np.ones((s_size,s_size)) 
     scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,omega)
     scale_mat_hat = create_upperbound_scale(shape_mat,scale_mat,omega-1)
@@ -256,8 +258,8 @@ def experiment_2( likelihood_power = 1. ):
         for i in range(number_of_samples):
 
             # ~~ sample the data given the sample path ~~
-            data = sample_data_posterior(V,T,*data_sampler_info)
-            print('data',data)
+            # data = sample_data_posterior(V,T,*data_sampler_info)
+            # print('data',data)
 
             # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
             W = sample_smjp_event_times(poisson_process_A_hat,V,T,time_length)
