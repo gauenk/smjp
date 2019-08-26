@@ -155,7 +155,7 @@ def experiment_2( likelihood_power = 1. ):
     obs_space = state_space
     s_size = len(state_space)
     time_length = 2 # for time t \in [0,time_length]
-    omega = 2
+    omega = 1.1
     uuid_str = uuid.uuid4()
 
     # experiment info
@@ -167,9 +167,9 @@ def experiment_2( likelihood_power = 1. ):
     #
     # ------------------------------------------
 
-    # shape_mat = npr.uniform(0.6,3.0,s_size**2).reshape((s_size,s_size))
+    shape_mat = npr.uniform(0.6,3.0,s_size**2).reshape((s_size,s_size))
     # shape_mat = npr.uniform(.8,.9,s_size**2).reshape((s_size,s_size))
-    shape_mat = npr.uniform(2.1,2.2,s_size**2).reshape((s_size,s_size))
+    # shape_mat = npr.uniform(2.1,2.2,s_size**2).reshape((s_size,s_size))
     scale_mat = np.ones((s_size,s_size)) 
     scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,omega)
     scale_mat_hat = create_upperbound_scale(shape_mat,scale_mat,omega-1)
@@ -198,7 +198,6 @@ def experiment_2( likelihood_power = 1. ):
     hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A,sampler=weibull_hazard_sampler_A)
     hazard_A_hat = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A_hat,sampler=weibull_hazard_sampler_A_hat)
     hazard_B = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_B,sampler=weibull_hazard_sampler_B)
-
 
     # ------------------------------------------------------------
     #
@@ -247,6 +246,7 @@ def experiment_2( likelihood_power = 1. ):
     pi_0 = MultinomialDistribution({'prob_vector': np.ones(s_size)/s_size,\
                                     'translation':state_space})
     V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
+    _V,_T = V,T
     print("--------------")
     print(V)
     print(T)
@@ -258,8 +258,8 @@ def experiment_2( likelihood_power = 1. ):
         for i in range(number_of_samples):
 
             # ~~ sample the data given the sample path ~~
-            # data = sample_data_posterior(V,T,*data_sampler_info)
-            # print('data',data)
+            data = sample_data_posterior(_V,_T,*data_sampler_info)
+            print('data',data)
 
             # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
             W = sample_smjp_event_times(poisson_process_A_hat,V,T,time_length)
@@ -371,6 +371,26 @@ def save_current_results(aggregate,aggregate_prior,uuid_str,n_iters):
     pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,'uuid_str':uuid_str}
     with open('results_{}_{}.pkl'.format(uuid_str,n_iters),'wb') as f:
         pickle.dump(pickle_mem_dump,f)
+
+def verify_hazard_function(h_create,state_space,aug_state_space):
+    import seaborn as sns
+    import matplotlib.pyplot
+    n_samples = 1000
+    nss = len(state_space)
+    samples = np.zeros(nss**2*n_samples).reshape(nss,nss,n_samples)
+    for idx_c,state_c in enumerate(state_space):
+        for idx_n,state_n in enumerate(state_space):
+            for idx_s in range(n_samples):
+                samples[idx_c,idx_n,idx_s] = h_create(state_c,state_n).sample()
+
+    for idx_c,state_c in enumerate(state_space):
+        for idx_n,state_n in enumerate(state_space):
+            print('{}->{}'.format(state_c,state_n),h_create(state_c,state_n).params)
+            sns.distplot(samples[idx_c,idx_n],hist=True,rug=False,\
+                         label='{}->{}'.format(state_c,state_n)).set(xlim=(0))
+
+    plt.legend()
+    plt.show()
 
 """
 TODO: 

@@ -289,6 +289,8 @@ class WeibullDistribution(Distribution):
         params = self.params_handler('load',params,**kwargs)
         #s = weibull_min.rvs(params.shape,loc=0,scale=params.scale,size=n)
         s = npr.weibull(params.shape,size=n)
+        # u = npr.uniform(0,1,1)[0]
+        # s = params.scale * np.power(-np.log(1-u),1./params.shape)
         return s
 
 

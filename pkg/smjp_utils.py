@@ -128,7 +128,7 @@ def smjp_transition(s_prev_idx,s_curr_idx,observation,augmented_state_space,A,B)
     l_ratio_B = np.ma.log([ B(t_hold)[v_prev] ]).filled(-np.infty)[0]
     l_ratio = l_ratio_A - l_ratio_B
     assert l_ratio <= 0, "the ratio of hazard functions should be <= 1"
-    if l_curr == time_p:
+    if l_curr == time_c:
         # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) : note below is _not_ a probability.
         log_A = np.ma.log( [ A(t_hold)[v_prev,v_curr] ] ).filled(-np.infty)[0]
         log_probability = log_A - l_ratio_B
@@ -620,7 +620,6 @@ def smjp_hazard_sampler_unset(state_space,h_create,hold_time,current_state,next_
             state_rate.append(rate)
         state_rate /= np.sum(state_rate)
         # could also do "argmax"
-        # TODO: verify multinomial over "next_state"
         state_index_l = np.where(npr.multinomial(n,state_rate,n) == 1)[0]
         sampled_state = []
         for state_index in state_index_l:
@@ -700,7 +699,6 @@ def sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, t_end, t_start = 0
     while(w_curr < t_end):
         
         # sample all holding times for the next state
-        # ?? TODO: what is the sampler for the pi distribution in generation?
         hold_time_samples = []
         for state in state_space:
             hold_time_samples += [ hazard_A.sample()[v_curr,state] ]

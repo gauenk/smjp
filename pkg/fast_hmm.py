@@ -228,7 +228,8 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
         init_probs_l[state_idx] = ll_init
         log_alphas[0,state_idx] = ll_init + ll_obs
         log_viterbi[0,state_idx] = ll_init + ll_obs
-    log_alphas[0,:] -= logsumexp(log_alphas[0,:])
+    # log_alphas[0,:] -= logsumexp(log_alphas[0,:])
+    log_alphas[0,:] -= np.max(log_alphas[0,:])
     # print("log_alphas[0,:]",log_alphas[0,:])
     # exit()
     trans_vec = np.zeros(log_alphas[0,:].shape)
@@ -317,8 +318,8 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
             # print("log_obs",log_obs)
             # print(logsumexp(log_alpha_current))
             log_alphas[time_index,state_c] = logsumexp(log_alpha_current) + log_obs
-        log_alphas[time_index,:] -= logsumexp(log_alphas[time_index,:])
-        #log_alphas[time_index,:] -= np.max(log_alphas[time_index,:])
+        # log_alphas[time_index,:] -= logsumexp(log_alphas[time_index,:])
+        log_alphas[time_index,:] -= np.max(log_alphas[time_index,:])
         
     # print(len(pi.state_space))
     # print(log_alphas.shape)
