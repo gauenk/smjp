@@ -155,7 +155,7 @@ def experiment_2( likelihood_power = 1. ):
     obs_space = state_space
     s_size = len(state_space)
     time_length = 2 # for time t \in [0,time_length]
-    omega = 1.1
+    omega = 2
     uuid_str = uuid.uuid4()
 
     # experiment info
@@ -229,7 +229,8 @@ def experiment_2( likelihood_power = 1. ):
     # likelihood of obs
     
     # P(\deta_w + l_i | v_i ) \sim A? \sim B? \sim A_hat? I think A_hat. Rao says "B".... why?
-    emission_info = [emission_likelihood,poisson_process_B,likelihood_power,state_space]
+    emission_info = [emission_likelihood,poisson_process_B,
+                     float(time_length),likelihood_power,state_space]
     smjp_emission = partial(smjp_emission_unset,*emission_info)
 
 
@@ -254,11 +255,18 @@ def experiment_2( likelihood_power = 1. ):
     print("--------------")
 
     save_iter = 300
-    if True: #False:
+    """
+    -> compute the alpha terms via monte-carlo method for a 1 step grid
+    -> the monte carlo should compute everything.
+    -> compute the alpha terms by hand for 1 pass
+    -> two states; 
+    -> at least 
+    """
+    if True:
         for i in range(number_of_samples):
 
             # ~~ sample the data given the sample path ~~
-            data = sample_data_posterior(_V,_T,*data_sampler_info)
+            data = sample_data_posterior(V,T,*data_sampler_info)
             print('data',data)
 
             # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
@@ -304,11 +312,13 @@ def experiment_2( likelihood_power = 1. ):
         # load to memory
         # filename = use_filepicker()
         # results_e1.pkl
-        with open('results_scholar_v3.pkl','rb') as f:
+        with open('results_10a1486e-d95d-4a16-a09c-81eb5c3e6dd9.pkl','rb') as f:
             pickle_mem_dump = pickle.load(f)
+        print(pickle_mem_dump)
         aggregate = pickle_mem_dump['agg']
         aggregate_prior = pickle_mem_dump['agg_prior']
         uuid_str = pickle_mem_dump['uuid_str']
+        # print(pickle_mem_dump['omega'])
         # print(aggregate,aggregate_prior)
 
 

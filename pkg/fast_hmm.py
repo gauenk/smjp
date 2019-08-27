@@ -228,8 +228,8 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
         init_probs_l[state_idx] = ll_init
         log_alphas[0,state_idx] = ll_init + ll_obs
         log_viterbi[0,state_idx] = ll_init + ll_obs
-    # log_alphas[0,:] -= logsumexp(log_alphas[0,:])
-    log_alphas[0,:] -= np.max(log_alphas[0,:])
+    log_alphas[0,:] -= logsumexp(log_alphas[0,:])
+    # log_alphas[0,:] -= np.max(log_alphas[0,:])
     # print("log_alphas[0,:]",log_alphas[0,:])
     # exit()
     trans_vec = np.zeros(log_alphas[0,:].shape)
@@ -291,9 +291,9 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
         #
         # compute log_transition matrix, normalized over "state_c"
         #
-        log_transition_mat = compute_transition_matrix(pi,time_p,time_c)
+
         # print(log_transition_mat)
-        
+        log_transition_mat = compute_transition_matrix(pi,time_p,time_c)
         # log_transition_mat = np.ones(num_of_states**2).reshape(num_of_states,num_of_states) * (-np.infty)
         # for state_p in range(num_of_states):
         #     for state_c in range(num_of_states):
@@ -318,8 +318,8 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
             # print("log_obs",log_obs)
             # print(logsumexp(log_alpha_current))
             log_alphas[time_index,state_c] = logsumexp(log_alpha_current) + log_obs
-        # log_alphas[time_index,:] -= logsumexp(log_alphas[time_index,:])
-        log_alphas[time_index,:] -= np.max(log_alphas[time_index,:])
+        log_alphas[time_index,:] -= logsumexp(log_alphas[time_index,:])
+        # log_alphas[time_index,:] -= np.max(log_alphas[time_index,:])
         
     # print(len(pi.state_space))
     # print(log_alphas.shape)
@@ -331,7 +331,14 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
     # print(np.exp(log_alphas - np.log(np.sum(np.exp(log_alphas)))))
     backpath = None
     output_prob = np.sum(np.exp(log_alphas[-1,:]))
+    # print('alphas',np.exp(log_alphas))
     return log_alphas,output_prob,log_viterbi,backpath
+
+"""
+[[0.40282252 0.         0.         0.59717748 0.         0.        ]
+ [0.21346932 0.15450294 0.         0.3430458  0.28898194 0.        ]
+ [0.01238763 0.03219346 0.37202135 0.01990696 0.08606519 0.4774254 ]]
+"""
 
 def compute_transition_matrix(pi,time_p,time_c):
     num_of_states = len(pi.state_space)

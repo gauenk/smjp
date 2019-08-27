@@ -211,7 +211,7 @@ def compute_likelihood_obs(x,p_x,state_space,v_curr,inv_temp):
 def get_final_grid_time_from_state_space(state_space,time_col):
     return np.max(state_space[:,time_col])
 
-def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
+def smjp_emission_unset(p_x,p_w,final_grid_time,inv_temp,state_space,
                         s_curr,s_next,observation,aug_state_space):
     """
     P( x_i, \delta w_i | v_i, l_i )
@@ -225,8 +225,6 @@ def smjp_emission_unset(p_x,p_w,inv_temp,state_space,
     v_curr,l_curr = aug_state_space[s_curr]
     t_hold = time_n - l_curr
     t_hold_c = time_c - l_curr
-    # final_grid_time = get_final_grid_time_from_state_space(aug_state_space,1)
-    final_grid_time = 2.0
 
     invalid_conditions = (time_c >= time_n)
     if invalid_conditions:
@@ -551,7 +549,7 @@ class PoissonProcess(object):
         if not is_poisson_event:
             log_exp_term = 0
             for next_state in self.state_space:
-                log_exp_term += self.mean_function(0, tau, current_state,next_state)
+                log_exp_term += self.mean_function(interval[0], interval[1], current_state,next_state)
             return np.exp(-log_exp_term)
 
 
