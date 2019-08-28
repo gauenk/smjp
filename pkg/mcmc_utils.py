@@ -1,8 +1,40 @@
 import re
 import numpy as np
+import numpy.random as npr
 from pkg.utils import *
 import matplotlib.pyplot as plt
 
+def compute_ks(x,y,alpha=0.05):
+    """
+    WARNING: THIS FUNCTION IS INCOMPLETE. NO ATTEMPT WAS MADE TO HAVE THIS CODE PROPER.
+
+    Compute the Kolmogorov-Smirnov test for two empirical CDFs
+    """
+    print("ERROR: DO NOT USE")
+    exit()
+    n = len(x)
+    m = len(y)
+    c_table = np.array([[0.10,1.073],
+                  [0.05,1.224],
+                  [0.025,1.358],
+                  [0.01,1.517],
+                  [0.005,1.628],
+                  [0.001,1.858],
+    ])
+    c = c_table[np.where(np.isclose(c_table[:,0],alpha))[0],1]
+    reject_value = c * np.sqrt( (n+m) / (n*m) )
+
+    #
+    # compare the empirical distribution functions
+    #
+
+    sx = sorted(x)
+    sy = sorted(y)
+    d_nm = np.max(np.abs(sx - sy))
+
+    is_recjected = d_nm > reject_value
+    return is_recjected,d_nm,reject_values
+    
 def compute_evaluation_chain_metrics(agg,states):
     V_list = agg['V']
     T_list = agg['T']
@@ -66,6 +98,20 @@ def plot_metric_traces(time_info,jump_info,states,uuid_str,file_id=None):
     plot_title = "Traces of [Number of Jumps] by State"
     plot_metric_helper(x_grid,jump_info,states,plot_title,plot_filename)
 
+def toy_correlationed_data(nsamples=1000):
+    x = np.zeros(nsamples)
+    x[0] = npr_unif(-1,1)
+    x[1] = npr_unif(0,1) * x[0]
+    x[2] = npr_unif(0,1) * x[1] + npr_unif(-1,0) * x[0]
+    x[3] = npr_unif(0,1) * x[2] + npr_unif(-1,0) * x[1] + npr_unif(-1,-1) * x[0]
+    for i in range(3,nsamples):
+        x[i] = npr_unif(0,1) * x[i-1] + npr_unif(-1,0) * x[i-2] + npr_unif(-1,-1) * x[i-3]
+    x /= np.sum(x)
+    return x
+
+def npr_unif(b,e):
+    return npr.uniform(b,e,1)[0]
+
 def plot_metric_autocorrelation(time_info,jump_info,states,uuid_str,file_id=None):
 
     # compute autocorrelation
@@ -74,6 +120,8 @@ def plot_metric_autocorrelation(time_info,jump_info,states,uuid_str,file_id=None
     jump_acorr = {state:0 for state in states}
     x_grid = {state:None for state in states}
     for state in states:
+        # data = toy_correlationed_data()
+        # time_acorr[state] = compute_autocorrelation(data)
         time_acorr[state] = compute_autocorrelation(time_info[state])
         time_acorr[state] = time_acorr[state][:50]
         jump_acorr[state] = compute_autocorrelation(jump_info[state])        

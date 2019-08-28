@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 #tmp
+import scipy.stats as sss
 from scipy.stats import weibull_min
 
 def experiment_0():
@@ -159,7 +160,8 @@ def experiment_2( likelihood_power = 1. ):
     uuid_str = uuid.uuid4()
 
     # experiment info
-    number_of_observations = 3
+    obs_times = [1./3,2./3,4./3,5./3]
+    num_of_obs = len(obs_times)
 
     # ------------------------------------------
     #
@@ -222,9 +224,9 @@ def experiment_2( likelihood_power = 1. ):
     smjp_emission_create = partial(smjp_emission_multinomial_create_unset,state_space)
     emission_sampler = sMJPWrapper(smjp_emission_sampler,state_space,smjp_emission_create)
     emission_likelihood = sMJPWrapper(smjp_emission_likelihood,state_space,smjp_emission_create)
-    data_samples,data_times = create_toy_data(state_space,time_length,number_of_observations,emission_sampler)
-    data = sMJPDataWrapper(data=data_samples,time=data_times)
-    data_sampler_info = [state_space,time_length,emission_sampler]
+    data_samples = create_toy_data(state_space,time_length,num_of_obs,emission_sampler)
+    data = sMJPDataWrapper(data=data_samples,time=obs_times)
+    data_sampler_info = [state_space,emission_sampler,obs_times]
     
     # likelihood of obs
     
@@ -270,19 +272,11 @@ def experiment_2( likelihood_power = 1. ):
             print('data',data)
 
             # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
-            W = sample_smjp_event_times(poisson_process_A_hat,V,T,time_length)
-            # just for testing
-            # W = np.arange(10)
-            # while len(W) > 9:
-            #     W = sample_smjp_event_times(poisson_process_A,V,T)
-            """
-            make sure we are throwing away times.
-            """
-            print(W)
-
             p_u_str = '{}_{}'.format(uuid_str,i)
+            W = sample_smjp_event_times(poisson_process_A_hat,V,T,time_length)
             V,T,prob = sample_smjp_trajectory_posterior(W,data,*smjp_sampler_input,p_u_str)
             print("---------")
+            print(W)
             print(V)
             print(T)
             print("|T| = {}".format(len(T)))
@@ -305,22 +299,18 @@ def experiment_2( likelihood_power = 1. ):
                 save_current_results(aggregate,aggregate_prior,uuid_str,i)
 
         # save to memory
-        # pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,'uuid_str':uuid_str}
-        # with open('results_{}.pkl'.format(uuid_str),'wb') as f:
-        #     pickle.dump(pickle_mem_dump,f)
+        pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,
+                           'uuid_str':uuid_str,'omgea':omega}
+        with open('results_{}.pkl'.format(uuid_str),'wb') as f:
+            pickle.dump(pickle_mem_dump,f)
     else:
         # load to memory
-        # filename = use_filepicker()
-        # results_e1.pkl
-        with open('results_10a1486e-d95d-4a16-a09c-81eb5c3e6dd9.pkl','rb') as f:
+        fn = 'results_mc_1.pkl'
+        with open(fn,'rb') as f:
             pickle_mem_dump = pickle.load(f)
-        print(pickle_mem_dump)
         aggregate = pickle_mem_dump['agg']
         aggregate_prior = pickle_mem_dump['agg_prior']
         uuid_str = pickle_mem_dump['uuid_str']
-        # print(pickle_mem_dump['omega'])
-        # print(aggregate,aggregate_prior)
-
 
     # --------------------------------------------------
     #
@@ -335,6 +325,25 @@ def experiment_2( likelihood_power = 1. ):
     agg_time_info,agg_jump_info = compute_metric_summaries(time_info,jump_info,state_space)
     agg_time_info_prior,agg_jump_info_prior = compute_metric_summaries(time_info_prior,jump_info_prior,state_space)
 
+    print("-=-=-=- Aggregate Information -=-=-=-")
+    print(" ------------ ")
+    print(" --> Time <-- ")
+    print(" ------------ ")
+    print('--> posterior <--')
+    print(agg_time_info)
+    print('--> prior <--')
+    print(agg_time_info_prior)
+
+    print(" ------------ ")
+    print(" --> Jumps <-- ")
+    print(" ------------ ")
+    print('--> posterior <--')
+    print(agg_jump_info)
+    print('--> prior <--')
+    print(agg_jump_info_prior)
+
+    print("-"*30)
+
     # compact the results for returning
     metrics_posterior = {'time':time_info,
                          'jump':jump_info,
@@ -347,9 +356,10 @@ def experiment_2( likelihood_power = 1. ):
                      'agg_jump':agg_jump_info_prior,
     }
 
-    # computing effective sample size
+    # create density plots of values
+    # plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
+    compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
     
-
     # create plots of metrics
     file_id = 'posterior'
     plot_metric_traces(time_info,jump_info,state_space,uuid_str,file_id)
@@ -381,6 +391,51 @@ def save_current_results(aggregate,aggregate_prior,uuid_str,n_iters):
     pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,'uuid_str':uuid_str}
     with open('results_{}_{}.pkl'.format(uuid_str,n_iters),'wb') as f:
         pickle.dump(pickle_mem_dump,f)
+
+def compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
+    ssize = len(state_space)
+    times_ks = np.zeros(ssize*2).reshape(ssize,2)
+    for state_idx,state in enumerate(state_space):
+        times = time_info[state]
+        times_pr = time_info_prior[state]
+        ks_result = sss.ks_2samp(times,times_pr)
+        print(ks_result)
+        times_ks[state_idx,0] = ks_result.statistic
+        times_ks[state_idx,1] = ks_result.pvalue
+    
+    jumps_ks = np.zeros(ssize*2).reshape(ssize,2)
+    for state_idx,state in enumerate(state_space):
+        jumps = jump_info[state]
+        jumps_pr = jump_info_prior[state]
+        ks_result = sss.ks_2samp(jumps,jumps_pr)
+        jumps_ks[state_idx,0] = ks_result.statistic
+        jumps_ks[state_idx,1] = ks_result.pvalue
+
+    print(" ---> KS Results <--- ")
+    print("times_ks")
+    print(times_ks)
+    print("jumps_ks")
+    print(jumps_ks)
+    print("-"*30)
+
+
+def plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
+    for state in state_space:
+        times = time_info[state]
+        times_pr = time_info_prior[state]
+        sns.distplot(times,hist=False,rug=True,label='{}_post'.format(state))
+        sns.distplot(times_pr,hist=False,rug=True,label='{}_prior'.format(state))
+    plt.show()
+    plt.clf()
+    
+    for state in state_space:
+        jumps = jump_info[state]
+        jumps_pr = jump_info_prior[state]
+        sns.distplot(jumps,hist=False,rug=True,label='{}_post'.format(state))
+        sns.distplot(jumps_pr,hist=False,rug=True,label='{}_prior'.format(state))
+    plt.show()
+    plt.clf()
+
 
 def verify_hazard_function(h_create,state_space,aug_state_space):
     import seaborn as sns

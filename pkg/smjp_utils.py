@@ -229,30 +229,10 @@ def smjp_emission_unset(p_x,p_w,final_grid_time,inv_temp,state_space,
     invalid_conditions = (time_c >= time_n)
     if invalid_conditions:
         return -np.infty
-    #     """
-    #     I don't think I return 0 in the case of t_hold_c < 0 since
-    #     we can have a jump to a new state at l_curr
-
-    #     say W = { ..., 0.9, 1.0, ... }
-    #     l_curr = {?,1.0}
-    #     then we jump at time 1.0
-
-    #     then t_hold = 0
-    #     t_hold_c = -0.1
-
-    #     But if we return "0" then this cancels the rest of the alpha
-    #     probabilities...
-
-    #     I don't think we can write our probability with "l_i" as the 
-    #     "time of jump" the same way it is written in the pdf with
-    #     "l_i" meaning the "time since the jump".
-
-    #     """
-
-    #     return -np.infty
 
     if t_hold <= 0: # we want t_hold >= 0
         return -np.infty
+
     if t_hold_c < 0:
         return -np.infty
         print(times)
@@ -260,23 +240,12 @@ def smjp_emission_unset(p_x,p_w,final_grid_time,inv_temp,state_space,
         print(l_curr)
         exit()
 
-    # print('sc',s_curr)
-    # print(t_hold)
     # P(x | v_i )
     if len(x) == 0: 
         # return no information when the observation is 
         likelihood_x = 1
     else:
         likelihood_x = compute_likelihood_obs(x,p_x,state_space,v_curr,inv_temp)
-    likelihood_x = 1
-    #print("where??")
-
-    # P( \delta w_i | v_i, l_i )
-    # if t_hold < 0:
-    #     print(x,time_c,v_curr,l_curr,t_hold)
-    #     print(state_space)
-    #     print(aug_state_space)
-    # t_hold = delta_w + l_curr
     
     """
     The issue now is that we've got to compute the integral after equation 3
@@ -306,9 +275,11 @@ def smjp_emission_unset(p_x,p_w,final_grid_time,inv_temp,state_space,
         likelihood_delta_w = p_w.l([t_hold_c,t_hold],v_curr)
     else: # the final event is not a poisson process
         likelihood_delta_w = p_w.l([t_hold_c,t_hold],v_curr,is_poisson_event=False)
-    # print("Pw",likelihood_delta_w)
     likelihood = likelihood_x * likelihood_delta_w
     log_likelihood = np.ma.log([likelihood]).filled(-np.infty)[0]
+    # print("Pw",likelihood_delta_w)
+    # print("Px",likelihood_x)
+    # print("Pobs",likelihood)
 
     # print('LL',log_likelihood)
     return log_likelihood
@@ -852,25 +823,23 @@ def include_endpoint_in_thinned_samples(thinned_samples,t_end):
         complete_thinned_samples = np.r_[thinned_samples,end]
         return complete_thinned_samples
 
-def sample_data_posterior(V,T,state_space,time_length,emission_sampler):
+def sample_data_posterior(V,T,state_space,emission_sampler,obs_times):
+    # -- sample via emission probability @ fixed times --
     ss = len(state_space)
-    # print(V,T)
-    obs_times = T
-    # -- sample via emission probability --
-    data = []
-    for state in V:
-        # ???? I am not sure if this is actually how we should randomize the data... ???
-        # do we thin? do we keep?
-        # STILL: this is pretty un-necessary here since its 100 v 1 [emission _not_ posterior] 
-        data += [emission_sampler(None)[state]] 
-    data_samples,data_times = data,obs_times
-    # print(data,obs_times)
-    data = sMJPDataWrapper(data=data_samples,time=data_times)
-    # print(data)
+    data_states = []
+    data_times = []
+    for obs_time in obs_times:
+        time_c = T[0]
+        for state,time_n in zip(V[:-1],T[1:]):
+            if time_c <= obs_time < time_n:
+                data_states += [emission_sampler(None)[state]] 
+                data_times += [ obs_time ]
+                break
+            time_c = time_n
+    data = sMJPDataWrapper(data=data_states,time=data_times)
     return data
 
 def create_toy_data(state_space,time_length,number_of_observations,emission_sampler):
-    obs_times = sorted(npr.uniform(0,time_length,number_of_observations)) # random times
     gen_state_prob = np.ones(len(state_space)) / len(state_space) # all states equally likely
     states_index = np.where(npr.multinomial(1,gen_state_prob,number_of_observations) == 1)[1]
     data = []
@@ -878,7 +847,7 @@ def create_toy_data(state_space,time_length,number_of_observations,emission_samp
         state = state_space[state_index]
         # this is pretty un-necessary here since its 100 v 1
         data += [emission_sampler(None)[state]] 
-    return data,obs_times
+    return data
     
 def smjp_emission_multinomial_create_unset(state_space,state_curr):
     mn_probs = np.ones(len(state_space))

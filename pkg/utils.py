@@ -35,6 +35,7 @@ def compute_autocorrelation(samples):
     acorr = result[len(result) // 2:] # symmetric so remove second half
     acorr /= np.arange(n,0,-1) # we normalize the auto-corr via # of samples: *(#samples)^{-1}
     acorr /= acorr[0] # divide by variance per the definition of auto-corr (autocov -> autocorr)
+    print(acorr[:15])
     return acorr
 
 def compute_ess(samples,autocorr_threshold = 0.01):
