@@ -242,7 +242,7 @@ def experiment_2( likelihood_power = 1. ):
     #
     # ----------------------------------------------------------------------
 
-    aggregate = {'W':[],'V':[],'T':[],'prob':[]}
+    aggregate = {'W':[],'V':[],'T':[],'prob':[],'data':[]}
     aggregate_prior = {'V':[],'T':[]}
     number_of_samples = 6000
     smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,time_length]
@@ -285,6 +285,7 @@ def experiment_2( likelihood_power = 1. ):
             aggregate['V'].append(V)
             aggregate['T'].append(T)
             aggregate['prob'].append(prob)
+            aggregate['data'].append(data) # when running Gibbs for P(x|\theta) & P(\theta|x)
             print('posterior',np.c_[V,T])
 
             # take some samples from the prior for de-bugging the mcmc sampler
@@ -305,15 +306,15 @@ def experiment_2( likelihood_power = 1. ):
             pickle.dump(pickle_mem_dump,f)
     else:
         # load to memory
-        fn = "results_2af9a817-52b6-4fe9-a8dc-63692f49f26c_final.pkl"
-        # fn = "results_5797affc-9151-40e3-a6c7-93bb3b909126_final.pkl"
+        # fn = "results_2af9a817-52b6-4fe9-a8dc-63692f49f26c_final.pkl"
+        fn = "results_5797affc-9151-40e3-a6c7-93bb3b909126_final.pkl"
         # fn = 'results_mc_1.pkl'
         with open(fn,'rb') as f:
             pickle_mem_dump = pickle.load(f)
         aggregate = pickle_mem_dump['agg']
         aggregate_prior = pickle_mem_dump['agg_prior']
         uuid_str = pickle_mem_dump['uuid_str']
-        omega = pickle_mem_dump['omega']
+        omega = pickle_mem_dump['omgea']
     print("omega: {}".format(omega))
 
     # --------------------------------------------------
@@ -400,8 +401,8 @@ def compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_pri
     ssize = len(state_space)
     times_ks = np.zeros(ssize*2).reshape(ssize,2)
     for state_idx,state in enumerate(state_space):
-        times = time_info[state]
-        times_pr = time_info_prior[state]
+        times = time_info[state][100:]
+        times_pr = time_info_prior[state][100:]
         ks_result = sss.ks_2samp(times,times_pr)
         print(ks_result)
         times_ks[state_idx,0] = ks_result.statistic
