@@ -300,17 +300,21 @@ def experiment_2( likelihood_power = 1. ):
 
         # save to memory
         pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,
-                           'uuid_str':uuid_str,'omgea':omega}
+                           'uuid_str':uuid_str,'omega':omega}
         with open('results_{}_final.pkl'.format(uuid_str),'wb') as f:
             pickle.dump(pickle_mem_dump,f)
     else:
         # load to memory
-        fn = 'results_mc_1.pkl'
+        fn = "results_2af9a817-52b6-4fe9-a8dc-63692f49f26c_final.pkl"
+        # fn = "results_5797affc-9151-40e3-a6c7-93bb3b909126_final.pkl"
+        # fn = 'results_mc_1.pkl'
         with open(fn,'rb') as f:
             pickle_mem_dump = pickle.load(f)
         aggregate = pickle_mem_dump['agg']
         aggregate_prior = pickle_mem_dump['agg_prior']
         uuid_str = pickle_mem_dump['uuid_str']
+        omega = pickle_mem_dump['omega']
+    print("omega: {}".format(omega))
 
     # --------------------------------------------------
     #
