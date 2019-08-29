@@ -244,7 +244,7 @@ def experiment_2( likelihood_power = 1. ):
 
     aggregate = {'W':[],'V':[],'T':[],'prob':[],'data':[]}
     aggregate_prior = {'V':[],'T':[]}
-    number_of_samples = 6000
+    number_of_samples = 12000
     smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,time_length]
     pi_0 = MultinomialDistribution({'prob_vector': np.ones(s_size)/s_size,\
                                     'translation':state_space})
@@ -306,15 +306,14 @@ def experiment_2( likelihood_power = 1. ):
             pickle.dump(pickle_mem_dump,f)
     else:
         # load to memory
-        # fn = "results_2af9a817-52b6-4fe9-a8dc-63692f49f26c_final.pkl"
-        fn = "results_5797affc-9151-40e3-a6c7-93bb3b909126_final.pkl"
-        # fn = 'results_mc_1.pkl'
+        fn = "results_4a5078d5-d4fa-456f-8ec9-a8f7d22fd498_final.pkl"
+        fn = "results_32578b41-dfd7-4f37-a31e-0a3ac80e9755_final.pkl"
         with open(fn,'rb') as f:
             pickle_mem_dump = pickle.load(f)
         aggregate = pickle_mem_dump['agg']
         aggregate_prior = pickle_mem_dump['agg_prior']
         uuid_str = pickle_mem_dump['uuid_str']
-        omega = pickle_mem_dump['omgea']
+        omega = pickle_mem_dump['omega']
     print("omega: {}".format(omega))
 
     # --------------------------------------------------
@@ -326,6 +325,13 @@ def experiment_2( likelihood_power = 1. ):
     # compute [(i) total time, (ii) # jumps ] statistics over samples
     time_info,jump_info = compute_evaluation_chain_metrics(aggregate,state_space)
     time_info_prior,jump_info_prior = compute_evaluation_chain_metrics(aggregate_prior,state_space)
+
+
+    # modift \theta frequency via P(\theta,x) = P(\theta | x) * P(x | \theta)
+    # if 'data' in aggregate.keys():
+    #     posterior_data = aggregate['data']
+    #     time_info,jump_info = modify_info_via_data_samples(time_info,jump_info,posterior_data)
+        
 
     agg_time_info,agg_jump_info = compute_metric_summaries(time_info,jump_info,state_space)
     agg_time_info_prior,agg_jump_info_prior = compute_metric_summaries(time_info_prior,jump_info_prior,state_space)
@@ -362,7 +368,7 @@ def experiment_2( likelihood_power = 1. ):
     }
 
     # create density plots of values
-    # plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
+    plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
     compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
     
     # create plots of metrics
@@ -401,28 +407,70 @@ def compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_pri
     ssize = len(state_space)
     times_ks = np.zeros(ssize*2).reshape(ssize,2)
     for state_idx,state in enumerate(state_space):
-        times = time_info[state][100:]
-        times_pr = time_info_prior[state][100:]
+        times = time_info[state][5000:]
+        times_pr = time_info_prior[state][5000:]
         ks_result = sss.ks_2samp(times,times_pr)
-        print(ks_result)
         times_ks[state_idx,0] = ks_result.statistic
         times_ks[state_idx,1] = ks_result.pvalue
     
     jumps_ks = np.zeros(ssize*2).reshape(ssize,2)
     for state_idx,state in enumerate(state_space):
-        jumps = jump_info[state]
-        jumps_pr = jump_info_prior[state]
+        jumps = jump_info[state][5000:]
+        jumps_pr = jump_info_prior[state][5000:]
         ks_result = sss.ks_2samp(jumps,jumps_pr)
         jumps_ks[state_idx,0] = ks_result.statistic
         jumps_ks[state_idx,1] = ks_result.pvalue
 
     print(" ---> KS Results <--- ")
-    print("times_ks")
+    print("times_ks [stat,pvalue]")
     print(times_ks)
-    print("jumps_ks")
+    print("jumps_ks [stat,pvalue]")
     print(jumps_ks)
     print("-"*30)
 
+def modify_info_via_data_samples(_time_info,_jump_info,posterior_data):
+    """
+    Currently, this is easy since the "data" is sampled at fixed points
+    in time. However, how would we run this experiment if the observation
+    times themselves changed? 
+
+    E.g. 
+
+    Currently we have observations at [0,1/3,2/3,4/3,5/3]. To compute
+    P(\theta) = \sum_x P(\theta,x) we append examples according to the 
+    frequency of the data sample, x, associated with the \theta sample.
+    
+    What if the samples were from some distribution over the continuous range [0,2]?
+
+    I think is actually straightforward. We just compute the likelihood of the 
+    observations given the data. That is, we have some form of P(x|\theta) we know
+    aprior or we use non-parametrics.
+    """
+
+    state_space = [s for s in _time_info.keys()]
+    # get the (estimated) likelihood for each x value
+    data_samples = [ str(data.data) for data in posterior_data ]
+    results = np.unique(data_samples,return_counts=True)
+    # makes us need to repeat fewer numbers
+    adjusted_counts = results[1] - np.min(results[1])
+    tally_dict = dict(zip(results[0],adjusted_counts))
+
+    # for (\theta,x) repeat \theta based on associated \hat{p}(x | \theta)
+    time_info = {s:[] for s in state_space}
+    jump_info = {s:[] for s in state_space}
+    for state_idx,state in enumerate(state_space):
+        tis = _time_info[state]
+        jis = _jump_info[state]
+        for data,time,jump in zip(data_samples,tis,jis):
+            freq = tally_dict[str(data)]
+            r_time = [time]*freq
+            r_jump = [jump]*freq
+            time_info[state].extend(r_time)
+            jump_info[state].extend(r_jump)
+    """
+    next step is the "sum" part of this...
+    """
+    return time_info,jump_info
 
 def plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
     for state in state_space:
