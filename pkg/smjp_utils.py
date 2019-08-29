@@ -290,6 +290,11 @@ def smjp_emission_sampler(s_curr,s_next,observation,state_space,d_create):
     sampled_state = distribution.s(1)
     return sampled_state
 
+def smjp_emission_likelihood_nosmjpwrapper(d_create,s_curr,obs_emission):
+    distribution = d_create(s_curr)
+    likelihood = distribution.l(obs_emission)
+    return likelihood
+
 def smjp_emission_likelihood(s_curr,s_next,observation,state_space,d_create):
     # s_next,observation not used; kept for compatability with the smjpwrapper
     # print("@@")
@@ -852,7 +857,7 @@ def create_toy_data(state_space,time_length,number_of_observations,emission_samp
 def smjp_emission_multinomial_create_unset(state_space,state_curr):
     mn_probs = np.ones(len(state_space))
     state_curr_index = state_space.index(state_curr)
-    mn_probs[state_curr_index] = 100
+    mn_probs[state_curr_index] = 3
     mn_probs /= np.sum(mn_probs)
     distribution = Multinomial({'prob_vector':mn_probs,'translation':state_space})
     return distribution

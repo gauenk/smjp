@@ -181,7 +181,8 @@ def experiment_2( likelihood_power = 1. ):
                     'scale_mat_hat':scale_mat_hat,
     }
 
-    if True:
+    write_uuid_str = None
+    if False: #True:
         write_uuid_str = uuid_str
     write_ndarray_list_to_debug_file(debug_params,write_uuid_str)
     
@@ -265,7 +266,7 @@ def experiment_2( likelihood_power = 1. ):
     -> two states; 
     -> at least 
     """
-    if False: #True:
+    if True:
         for i in range(number_of_samples):
 
             # ~~ sample the data given the sample path ~~
@@ -314,6 +315,7 @@ def experiment_2( likelihood_power = 1. ):
         aggregate_prior = pickle_mem_dump['agg_prior']
         uuid_str = pickle_mem_dump['uuid_str']
         omega = pickle_mem_dump['omega']
+
     print("omega: {}".format(omega))
 
     # --------------------------------------------------
@@ -327,10 +329,10 @@ def experiment_2( likelihood_power = 1. ):
     time_info_prior,jump_info_prior = compute_evaluation_chain_metrics(aggregate_prior,state_space)
 
 
-    # modift \theta frequency via P(\theta,x) = P(\theta | x) * P(x | \theta)
-    if 'data' in aggregate.keys():
-        posterior_data = aggregate['data']
-        time_info,jump_info = modify_info_via_data_samples(time_info,jump_info,posterior_data)
+    # NO; just take "X": modift \theta frequency via P(\theta,x) = P(\theta | x) * P(x | \theta)
+    # if 'data' in aggregate.keys():
+    #     posterior_data = aggregate['data']
+    #     time_info,jump_info = modify_info_via_data_samples(time_info,jump_info,posterior_data,em_l)
         
 
     agg_time_info,agg_jump_info = compute_metric_summaries(time_info,jump_info,state_space)
@@ -370,6 +372,7 @@ def experiment_2( likelihood_power = 1. ):
     # create density plots of values
     # plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
     compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
+    exit()
     
     # create plots of metrics
     file_id = 'posterior'
@@ -404,31 +407,42 @@ def save_current_results(aggregate,aggregate_prior,uuid_str,n_iters):
         pickle.dump(pickle_mem_dump,f)
 
 def compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
+    # not used but for records
+    n = len(time_info[state_space[0]])
+    m = len(time_info_prior[state_space[0]])
+    alpha = 0.05
+    c_alpha = 1.224
+    ub = c_alpha * np.sqrt( ( n + m ) / ( n * m ) )
+
     ssize = len(state_space)
     times_ks = np.zeros(ssize*2).reshape(ssize,2)
     for state_idx,state in enumerate(state_space):
-        times = time_info[state][5000:]
-        times_pr = time_info_prior[state][5000:]
+        # times = npr.rand(len(time_info[state]))
+        times = time_info[state]
+        times_pr = time_info_prior[state]
         ks_result = sss.ks_2samp(times,times_pr)
         times_ks[state_idx,0] = ks_result.statistic
         times_ks[state_idx,1] = ks_result.pvalue
     
     jumps_ks = np.zeros(ssize*2).reshape(ssize,2)
     for state_idx,state in enumerate(state_space):
-        jumps = jump_info[state][5000:]
-        jumps_pr = jump_info_prior[state][5000:]
+        jumps = jump_info[state]
+        jumps_pr = jump_info_prior[state]
         ks_result = sss.ks_2samp(jumps,jumps_pr)
         jumps_ks[state_idx,0] = ks_result.statistic
         jumps_ks[state_idx,1] = ks_result.pvalue
 
     print(" ---> KS Results <--- ")
-    print("times_ks [stat,pvalue]")
-    print(times_ks)
+    print("Reject if D_{{n,m}} > {}".format(ub))
+    print("times_ks [stat,pvalue,reject_bool]")
+    is_reject = times_ks[:,0] > ub
+    print(np.c_[times_ks,is_reject])
     print("jumps_ks [stat,pvalue]")
-    print(jumps_ks)
+    is_reject = jumps_ks[:,0] > ub
+    print(np.c_[jumps_ks,is_reject])
     print("-"*30)
 
-def modify_info_via_data_samples(_time_info,_jump_info,posterior_data):
+def modify_info_via_data_samples(_time_info,_jump_info,posterior_data,emission_likelihood):
     """
     Currently, this is easy since the "data" is sampled at fixed points
     in time. However, how would we run this experiment if the observation
@@ -455,13 +469,24 @@ def modify_info_via_data_samples(_time_info,_jump_info,posterior_data):
     adjusted_counts = results[1] - np.min(results[1])
     tally_dict = dict(zip(results[0],adjusted_counts))
 
+    f_mult = []
+    for data,V,T,tis,jis in zip(...):
+        data_l = cond_x_theta(data,V,T)
+        _f_mult = get_fmult(cond_x_theta,data,V,T)
+        f_mult.append(_f_mult)
+    
+
+
     # for (\theta,x) repeat \theta based on associated \hat{p}(x | \theta)
     time_info = {s:[] for s in state_space}
     jump_info = {s:[] for s in state_space}
     for state_idx,state in enumerate(state_space):
         tis = _time_info[state]
         jis = _jump_info[state]
-        for data,time,jump in zip(data_samples,tis,jis):
+        cond_x_st = partial(emission_likelihood,state)
+        f_mult = get_sample_frequency_multiplier(cond_x_st,state_space)
+        # the first sample (V,T) is from the prior; not saved.
+        for data,time,jump in zip(data_samples[1:],tis[:-1],jis[:-1]):
             freq = tally_dict[str(data)]
             r_time = [time]*freq
             r_jump = [jump]*freq
@@ -472,6 +497,24 @@ def modify_info_via_data_samples(_time_info,_jump_info,posterior_data):
     """
     return time_info,jump_info
 
+def get_sample_frequency_multiplier(cond_x_st,states):
+    """
+    we resample the posterior samples given the frequency
+    associated with the data sample.
+
+    The max number of repeats is associated with the precision of the 
+    likelihood... Having something super unlikely occur _once_ or have the 
+    possibility of occuring can make number of repeats of a sample increase
+    dramatically; we have to repeat the common events several times.
+
+    f_mult = "frequency based multiplier"
+    """
+    probs = [cond_x_st(s) for s in states]
+    probs -= np.min(probs)
+    probs /= np.min(probs)
+    print(probs)
+    return probs
+    
 def plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
     for state in state_space:
         times = time_info[state]
