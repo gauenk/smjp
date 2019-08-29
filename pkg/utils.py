@@ -5,14 +5,16 @@ def logsumexp(nd_array):
 def np_log(number):
     return np.ma.log([number]).filled(-np.infty)
 
-def write_ndarray_list_to_debug_file(params,debug_fn='debug_params.txt'):
+def write_ndarray_list_to_debug_file(params,uuid_str=None,debug_fn='debug_params'):
     w_str = ''
     for key,ndarray in params.items():
         w_str += '-------\n'
         w_str += key + '\n'
         w_str += str(ndarray)
         w_str += '\n\n'
-    with open(debug_fn,'w') as f:
+    if uuid_str is not None:
+        debug_fn += "_"+str(uuid_str)
+    with open(debug_fn+".txt",'w') as f:
         f.write(w_str)
     return
     

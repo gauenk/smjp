@@ -181,8 +181,9 @@ def experiment_2( likelihood_power = 1. ):
                     'scale_mat_hat':scale_mat_hat,
     }
 
-    write_ndarray_list_to_debug_file(debug_params) 
-
+    if True:
+        write_uuid_str = uuid_str
+    write_ndarray_list_to_debug_file(debug_params,write_uuid_str)
     
     # hazard A needs a sampler for the prior
     weibull_hazard_create_A = partial(weibull_hazard_create_unset,shape_mat,scale_mat,state_space)
@@ -264,7 +265,7 @@ def experiment_2( likelihood_power = 1. ):
     -> two states; 
     -> at least 
     """
-    if True:
+    if False: #True:
         for i in range(number_of_samples):
 
             # ~~ sample the data given the sample path ~~
@@ -306,8 +307,7 @@ def experiment_2( likelihood_power = 1. ):
             pickle.dump(pickle_mem_dump,f)
     else:
         # load to memory
-        fn = "results_4a5078d5-d4fa-456f-8ec9-a8f7d22fd498_final.pkl"
-        fn = "results_32578b41-dfd7-4f37-a31e-0a3ac80e9755_final.pkl"
+        fn = "results_541f8ddf-1342-41db-8daa-855a7041081e_final.pkl"
         with open(fn,'rb') as f:
             pickle_mem_dump = pickle.load(f)
         aggregate = pickle_mem_dump['agg']
@@ -328,9 +328,9 @@ def experiment_2( likelihood_power = 1. ):
 
 
     # modift \theta frequency via P(\theta,x) = P(\theta | x) * P(x | \theta)
-    # if 'data' in aggregate.keys():
-    #     posterior_data = aggregate['data']
-    #     time_info,jump_info = modify_info_via_data_samples(time_info,jump_info,posterior_data)
+    if 'data' in aggregate.keys():
+        posterior_data = aggregate['data']
+        time_info,jump_info = modify_info_via_data_samples(time_info,jump_info,posterior_data)
         
 
     agg_time_info,agg_jump_info = compute_metric_summaries(time_info,jump_info,state_space)
@@ -368,7 +368,7 @@ def experiment_2( likelihood_power = 1. ):
     }
 
     # create density plots of values
-    plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
+    # plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
     compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
     
     # create plots of metrics
