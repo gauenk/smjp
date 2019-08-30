@@ -434,10 +434,12 @@ def compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_pri
 
     print(" ---> KS Results <--- ")
     print("Reject if D_{{n,m}} > {}".format(ub))
-    print("times_ks [stat,pvalue,reject_bool]")
+    print("--> times_ks")
+    print("[stat,pvalue,reject_bool]")
     is_reject = times_ks[:,0] > ub
     print(np.c_[times_ks,is_reject])
-    print("jumps_ks [stat,pvalue]")
+    print("--> jumps_ks")
+    print("[stat,pvalue,reject_bool]")
     is_reject = jumps_ks[:,0] > ub
     print(np.c_[jumps_ks,is_reject])
     print("-"*30)

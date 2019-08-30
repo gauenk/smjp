@@ -857,7 +857,7 @@ def create_toy_data(state_space,time_length,number_of_observations,emission_samp
 def smjp_emission_multinomial_create_unset(state_space,state_curr):
     mn_probs = np.ones(len(state_space))
     state_curr_index = state_space.index(state_curr)
-    mn_probs[state_curr_index] = 3
+    mn_probs[state_curr_index] = 100
     mn_probs /= np.sum(mn_probs)
     distribution = Multinomial({'prob_vector':mn_probs,'translation':state_space})
     return distribution
