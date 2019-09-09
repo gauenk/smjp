@@ -266,12 +266,12 @@ def experiment_2( likelihood_power = 1. ):
     -> two states; 
     -> at least 
     """
-    if True:
+    if False: #True:
         for i in range(number_of_samples):
 
             # ~~ sample the data given the sample path ~~
-            data = sample_data_posterior(V,T,*data_sampler_info)
-            print('data',data)
+            # data = sample_data_posterior(V,T,*data_sampler_info)
+            # print('data',data)
 
             # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
             p_u_str = '{}_{}'.format(uuid_str,i)
@@ -308,13 +308,17 @@ def experiment_2( likelihood_power = 1. ):
             pickle.dump(pickle_mem_dump,f)
     else:
         # load to memory
-        fn = "results_541f8ddf-1342-41db-8daa-855a7041081e_final.pkl"
+        fn = "results_45c2b10d-0052-4a9d-a210-e85e58edfe7e_1800.pkl"
+        #fn = "final_results/results_1b584b67-cfd4-442b-a737-64d30c296e91_1200.pkl"
+        #fn = "final_results/results_eeb56a2f-cbf9-4aba-bd4d-f68fe2c1dd0f_8t_final.pkl"
+        #fn = "results_043b94d0-56b9-4d68-847d-e52148d2401e_final.pkl" # no omega
+        #fn = "results_541f8ddf-1342-41db-8daa-855a7041081e_final.pkl"
         with open(fn,'rb') as f:
             pickle_mem_dump = pickle.load(f)
         aggregate = pickle_mem_dump['agg']
         aggregate_prior = pickle_mem_dump['agg_prior']
         uuid_str = pickle_mem_dump['uuid_str']
-        omega = pickle_mem_dump['omega']
+        #omega = pickle_mem_dump['omega']
 
     print("omega: {}".format(omega))
 
@@ -408,26 +412,28 @@ def save_current_results(aggregate,aggregate_prior,uuid_str,n_iters):
 
 def compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
     # not used but for records
-    n = len(time_info[state_space[0]])
-    m = len(time_info_prior[state_space[0]])
+    skip = 1
+    n = len(time_info[state_space[0]][::skip])
+    m = len(time_info_prior[state_space[0]][::skip])
     alpha = 0.05
     c_alpha = 1.224
     ub = c_alpha * np.sqrt( ( n + m ) / ( n * m ) )
 
+    print("[skip: {}]".format(skip))
     ssize = len(state_space)
     times_ks = np.zeros(ssize*2).reshape(ssize,2)
     for state_idx,state in enumerate(state_space):
         # times = npr.rand(len(time_info[state]))
-        times = time_info[state]
-        times_pr = time_info_prior[state]
+        times = time_info[state][::skip]
+        times_pr = time_info_prior[state][::skip]
         ks_result = sss.ks_2samp(times,times_pr)
         times_ks[state_idx,0] = ks_result.statistic
         times_ks[state_idx,1] = ks_result.pvalue
     
     jumps_ks = np.zeros(ssize*2).reshape(ssize,2)
     for state_idx,state in enumerate(state_space):
-        jumps = jump_info[state]
-        jumps_pr = jump_info_prior[state]
+        jumps = jump_info[state][::skip]
+        jumps_pr = jump_info_prior[state][::skip]
         ks_result = sss.ks_2samp(jumps,jumps_pr)
         jumps_ks[state_idx,0] = ks_result.statistic
         jumps_ks[state_idx,1] = ks_result.pvalue
@@ -435,11 +441,11 @@ def compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_pri
     print(" ---> KS Results <--- ")
     print("Reject if D_{{n,m}} > {}".format(ub))
     print("--> times_ks")
-    print("[stat,pvalue,reject_bool]")
+    print("[stat,pvalue,do_we_reject?]")
     is_reject = times_ks[:,0] > ub
     print(np.c_[times_ks,is_reject])
     print("--> jumps_ks")
-    print("[stat,pvalue,reject_bool]")
+    print("[stat,pvalue,do_we_reject?]")
     is_reject = jumps_ks[:,0] > ub
     print(np.c_[jumps_ks,is_reject])
     print("-"*30)
