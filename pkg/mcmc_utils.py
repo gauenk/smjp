@@ -283,7 +283,7 @@ def generate_sample_report_twochainz(aggA,aggB,nameA,nameB,state_space,uuid_str)
 
 def compute_ks_twosample(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
     # not used but for records
-    skip = 1
+    skip = 20
     n = len(time_info[state_space[0]][::skip])
     m = len(time_info_prior[state_space[0]][::skip])
     alpha = 0.05
