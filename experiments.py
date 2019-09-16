@@ -268,14 +268,14 @@ def experiment_2( likelihood_power = 1. ):
                     omega,
                     filename,
                     load_file]
-    #rt_aggregate,rt_aggregate_prior,rt_uuid_str,rt_omega = raoteh(*raoteh_input)
+    rt_aggregate,rt_aggregate_prior,rt_uuid_str,rt_omega = raoteh(*raoteh_input)
 
     # -------------------
     # --- pmcmc (pm) ----
     # -------------------
     number_of_particles = 10
     load_file = False
-    filename = "r_final_pmcmc.pkl"
+    filename = "results_smjp_pmcmc.pkl"
     pmcmc_input = [number_of_particles,
                    number_of_samples,
                    save_iter,
@@ -299,9 +299,9 @@ def experiment_2( likelihood_power = 1. ):
     # 
     # -------------------------------------------------
 
-    generate_sample_report_twochainz(rt_aggregate,rt_aggregate_prior,
-                                     'posterior','prior',
-                                     state_space,uuid_str)
+    # generate_sample_report_twochainz(rt_aggregate,rt_aggregate_prior,
+    #                                  'posterior','prior',
+    #                                  state_space,uuid_str)
     # generate_sample_report_twochainz(rt_aggregate_prior,pm_aggregate_prior,'raoteh-pr','pm-pr')
     generate_sample_report_twochainz(rt_aggregate,pm_aggregate,'raoteh','pm',
                                      state_space,uuid_str)

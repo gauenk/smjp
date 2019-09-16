@@ -285,7 +285,7 @@ def smjp_smc(*args,**kwargs):
     V[0] = V[0] + [V[0][-1]]
     T[0] += [t_final]
     path_states = V[0]
-    path_times = V[0]
+    path_times = T[0]
     return path_states,path_times,likelihood
 
 
