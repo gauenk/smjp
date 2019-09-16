@@ -33,7 +33,7 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
 
     # print init sample
     print("--------------")
-    p_u_str = '{}_init'.format(uuid_str)
+    p_u_str = 'pmcmc_{}_init'.format(uuid_str)
     V,T,prob = smjp_smc(**smc_input)
     print("--- Likelihood {} ---".format(prob))
     print(np.c_[V,T])
@@ -52,7 +52,7 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
             V,T,prob = V_prop,T_prop,prob_prop
 
         # -- print summary & status --
-        p_u_str = '{}_{}'.format(uuid_str,i)
+        p_u_str = 'pmcmc_{}_{}'.format(uuid_str,i)
         if i % print_iter == 0:
             print("[{} / {}] samples".format(i,number_of_samples))
             save_samples_in_pickle(aggregate,None,None,uuid_str,i)
@@ -61,7 +61,8 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
         aggregate['V'].append(V)
         aggregate['T'].append(T)
         aggregate['prob'].append(prob)
-    save_samples_in_pickle(aggregate,None,None,uuid_str)
+    p_u_str = 'pmcmc_{}'.format(uuid_str)
+    save_samples_in_pickle(aggregate,None,None,p_u_str)
 
     return aggregate,uuid_str
 

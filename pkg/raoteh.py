@@ -33,7 +33,7 @@ def raoteh(number_of_samples,save_iter,smjp_sampler_input,data,pi_0,\
             # print('data',data)
 
             # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
-            p_u_str = '{}_{}'.format(uuid_str,i)
+            p_u_str = 'raoteh_{}_{}'.format(uuid_str,i)
             W = sample_smjp_event_times(poisson_process_A_hat,V,T,time_length)
             V,T,prob = sample_smjp_trajectory_posterior(W,data,*smjp_sampler_input,p_u_str)
             print("---------")
@@ -60,7 +60,8 @@ def raoteh(number_of_samples,save_iter,smjp_sampler_input,data,pi_0,\
                 print("saving current samples to file.")
                 save_samples_in_pickle(aggregate,aggregate_prior,omega,uuid_str,i)
         # save to memory
-        save_samples_in_pickle(aggregate,aggregate_prior,omega,uuid_str,None)
+        p_u_str = 'raoteh_{}'.format(uuid_str)
+        save_samples_in_pickle(aggregate,aggregate_prior,omega,p_u_str,None)
     else:
         # load to memory
         fn = "results_45c2b10d-0052-4a9d-a210-e85e58edfe7e_1800.pkl"
