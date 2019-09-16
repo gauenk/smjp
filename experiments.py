@@ -268,13 +268,13 @@ def experiment_2( likelihood_power = 1. ):
                     omega,
                     filename,
                     load_file]
-    rt_aggregate,rt_aggregate_prior,rt_uuid_str,rt_omega = raoteh(*raoteh_input)
+    #rt_aggregate,rt_aggregate_prior,rt_uuid_str,rt_omega = raoteh(*raoteh_input)
 
     # -------------------
     # --- pmcmc (pm) ----
     # -------------------
     number_of_particles = 10
-    load_file = True
+    load_file = False
     filename = "r_final_pmcmc.pkl"
     pmcmc_input = [number_of_particles,
                    number_of_samples,
