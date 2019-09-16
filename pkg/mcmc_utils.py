@@ -263,21 +263,21 @@ def generate_sample_report_twochainz(aggA,aggB,nameA,nameB,state_space,uuid_str)
     # create density plots of values
     # plot_sample_densities(time_info_A,time_info_B,jump_info_A,jump_info_B,state_space)
     compute_ks_twosample(time_info_A,time_info_B,jump_info_A,jump_info_B,state_space)
-    exit()
+
     
     # create plots of metrics
-    file_id = 'posterior'
-    plot_metric_traces(time_info,jump_info,state_space,uuid_str,file_id)
-    plot_metric_autocorrelation(time_info,jump_info,state_space,uuid_str,file_id)
+    file_id = nameA
+    plot_metric_traces(time_info_A,jump_info_A,state_space,uuid_str,file_id)
+    plot_metric_autocorrelation(time_info_A,jump_info_A,state_space,uuid_str,file_id)
     create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
 
-    file_id = 'prior'
+    file_id = nameB
     plot_metric_traces(time_info_B,jump_info_B,state_space,uuid_str,file_id)
     plot_metric_autocorrelation(time_info_B,jump_info_B,state_space,uuid_str,file_id)
     create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
     print("Finished computing metrics for experiment id {}".format(uuid_str))
+    return
     exit()
-
     return metrics_A,metrics_B
 
 

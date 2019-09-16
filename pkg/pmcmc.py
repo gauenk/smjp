@@ -48,7 +48,7 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
         # regular,old mh-mcmc
         V_prop,T_prop,prob_prop = smjp_smc(**smc_input)
         coin_flip = np.log(npr.uniform(0,1,1))
-        if coin_flip > ( prob_prop / prob ):
+        if coin_flip < ( prob_prop / prob ):
             V,T,prob = V_prop,T_prop,prob_prop
 
         # -- print summary & status --
