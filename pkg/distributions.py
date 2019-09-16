@@ -351,7 +351,7 @@ class MultinomialDistribution(Distribution):
         if n == 1:
             sample = np.where(npr.multinomial(1,params.prob_vector) == 1)[0][0]
         elif size == n:
-            sample = np.where(npr.multinomial(1,params.prob_vector) == 1)[0]
+            sample = np.where(npr.multinomial(1,params.prob_vector,n) == 1)[1]
         else:
             sample = npr.multinomial(n,params.prob_vector,size)            
         if self.translation is not None:

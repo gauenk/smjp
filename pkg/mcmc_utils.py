@@ -1,8 +1,10 @@
-import re
+import re,pickle
 import numpy as np
 import numpy.random as npr
 from pkg.utils import *
 import matplotlib.pyplot as plt
+import seaborn as sns
+import scipy.stats as sss
 
 def compute_ks(x,y,alpha=0.05):
     """
@@ -216,3 +218,145 @@ def get_image_name(file_list,metric,field,file_id):
             return name
     print("No match.")
     return None
+
+
+def generate_sample_report_twochainz(aggA,aggB,nameA,nameB,state_space,uuid_str):
+    time_info_A,jump_info_A = compute_evaluation_chain_metrics(aggA,state_space)
+    time_info_B,jump_info_B = compute_evaluation_chain_metrics(aggB,state_space)
+
+    agg_time_info_A,agg_jump_info_A = compute_metric_summaries(time_info_A,jump_info_A,\
+                                                               state_space)
+    agg_time_info_B,agg_jump_info_B = compute_metric_summaries(time_info_B,jump_info_B,\
+                                                               state_space)
+
+    print("-=-=-=- Aggregate Information -=-=-=-")
+    print(" ------------ ")
+    print(" --> Time <-- ")
+    print(" ------------ ")
+    print('--> {} <--'.format(nameA))
+    print(agg_time_info_A)
+    print('--> {} <--'.format(nameB))
+    print(agg_time_info_B)
+
+    print(" ------------ ")
+    print(" --> Jumps <-- ")
+    print(" ------------ ")
+    print('--> {} <--'.format(nameA))
+    print(agg_jump_info_A)
+    print('--> {} <--'.format(nameB))
+    print(agg_jump_info_B)
+
+    print("-"*30)
+
+    # compact the results for returning
+    metrics_A = {'time':time_info_A,
+                         'jump':jump_info_A,
+                         'agg_time':agg_time_info_A,
+                         'agg_jump':agg_jump_info_A,
+                         }
+    metrics_B = {'time':time_info_B,
+                     'jump':jump_info_B,
+                     'agg_time':agg_time_info_B,
+                     'agg_jump':agg_jump_info_B,
+    }
+
+    # create density plots of values
+    # plot_sample_densities(time_info_A,time_info_B,jump_info_A,jump_info_B,state_space)
+    compute_ks_twosample(time_info_A,time_info_B,jump_info_A,jump_info_B,state_space)
+    exit()
+    
+    # create plots of metrics
+    file_id = 'posterior'
+    plot_metric_traces(time_info,jump_info,state_space,uuid_str,file_id)
+    plot_metric_autocorrelation(time_info,jump_info,state_space,uuid_str,file_id)
+    create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
+
+    file_id = 'prior'
+    plot_metric_traces(time_info_B,jump_info_B,state_space,uuid_str,file_id)
+    plot_metric_autocorrelation(time_info_B,jump_info_B,state_space,uuid_str,file_id)
+    create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
+    print("Finished computing metrics for experiment id {}".format(uuid_str))
+    exit()
+
+    return metrics_A,metrics_B
+
+
+def compute_ks_twosample(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
+    # not used but for records
+    skip = 1
+    n = len(time_info[state_space[0]][::skip])
+    m = len(time_info_prior[state_space[0]][::skip])
+    alpha = 0.05
+    c_alpha = 1.224
+    ub = c_alpha * np.sqrt( ( n + m ) / ( n * m ) )
+
+    print("[skip: {}]".format(skip))
+    ssize = len(state_space)
+    times_ks = np.zeros(ssize*2).reshape(ssize,2)
+    for state_idx,state in enumerate(state_space):
+        # times = npr.rand(len(time_info[state]))
+        times = time_info[state][::skip]
+        times_pr = time_info_prior[state][::skip]
+        ks_result = sss.ks_2samp(times,times_pr)
+        times_ks[state_idx,0] = ks_result.statistic
+        times_ks[state_idx,1] = ks_result.pvalue
+    
+    jumps_ks = np.zeros(ssize*2).reshape(ssize,2)
+    for state_idx,state in enumerate(state_space):
+        jumps = jump_info[state][::skip]
+        jumps_pr = jump_info_prior[state][::skip]
+        ks_result = sss.ks_2samp(jumps,jumps_pr)
+        jumps_ks[state_idx,0] = ks_result.statistic
+        jumps_ks[state_idx,1] = ks_result.pvalue
+
+    print(" ---> KS Results <--- ")
+    print("Reject if D_{{n,m}} > {}".format(ub))
+    print("--> times_ks")
+    print("[stat,pvalue,do_we_reject?]")
+    is_reject = times_ks[:,0] > ub
+    print(np.c_[times_ks,is_reject])
+    print("--> jumps_ks")
+    print("[stat,pvalue,do_we_reject?]")
+    is_reject = jumps_ks[:,0] > ub
+    print(np.c_[jumps_ks,is_reject])
+    print("-"*30)
+
+
+def plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
+    for state in state_space:
+        times = time_info[state]
+        times_pr = time_info_prior[state]
+        sns.distplot(times,hist=False,rug=True,label='{}_post'.format(state))
+        sns.distplot(times_pr,hist=False,rug=True,label='{}_prior'.format(state))
+    plt.show()
+    plt.clf()
+    
+    for state in state_space:
+        jumps = jump_info[state]
+        jumps_pr = jump_info_prior[state]
+        sns.distplot(jumps,hist=False,rug=True,label='{}_post'.format(state))
+        sns.distplot(jumps_pr,hist=False,rug=True,label='{}_prior'.format(state))
+    plt.show()
+    plt.clf()
+
+
+def save_samples_in_pickle(aggregate,aggregate_prior,omega,uuid_str,n_iters=None):
+    if n_iters is None:
+        fn = 'results_{}_final.pkl'.format(uuid_str)
+    else:
+        fn = 'results_{}_{}.pkl'.format(uuid_str,n_iters)        
+    pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,\
+                       'uuid_str':uuid_str,'omega':omega}
+    with open(fn,'wb') as f:
+        pickle.dump(pickle_mem_dump,f)
+
+def load_samples_in_pickle(fn):
+    with open(fn,'rb') as f:
+        pickle_mem_dump = pickle.load(f)
+        aggregate = pickle_mem_dump['agg']
+        aggregate_prior = pickle_mem_dump['agg_prior']
+        uuid_str = pickle_mem_dump['uuid_str']
+        omega = 2 #pickle_mem_dump['omega']
+    return aggregate,aggregate_prior,uuid_str,omega
+
+

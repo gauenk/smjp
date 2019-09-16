@@ -1,6 +1,11 @@
+import numpy as np
+import numpy.random as npr
+
 def logsumexp(nd_array):
     return np.ma.log([np.sum(np.exp(nd_array))])[0]
 
+def sampleDiscrete(probs,N):
+    return np.where(npr.multinomial(1,probs,N) == 1)[1]
 
 def np_log(number):
     return np.ma.log([number]).filled(-np.infty)

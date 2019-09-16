@@ -13,6 +13,7 @@ matplotlib = "==2.1.0"
 pymc3 = "*"
 scipy = "*"
 imageio = "*"
+pipfile = "*"
 
 [requires]
 python_version = "3.6"

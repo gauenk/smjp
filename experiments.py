@@ -22,17 +22,16 @@ from pkg.mh_mcmc import mh_mcmc
 from pkg.hidden_markov_model import *
 from pkg.smjp_utils import *
 from pkg.mcmc_utils import *
+from pkg.pmcmc import pmcmc
+from pkg.raoteh import raoteh
 import matplotlib.pyplot as plt
 from matplotlib import cm
-
-#tmp
-import scipy.stats as sss
-from scipy.stats import weibull_min
 
 def experiment_0():
     """
     check if we have some basics correct
     """
+    from scipy.stats import weibull_min
     params_list = [[1,.5],[1,1],[1,1.5],[1,5]]
     quantile_list = [.1,.25,.5,.75,.9,.95]
     x_grid = np.arange(0.01,5,.05)
@@ -156,6 +155,7 @@ def experiment_2( likelihood_power = 1. ):
     obs_space = state_space
     s_size = len(state_space)
     time_length = 2 # for time t \in [0,time_length]
+    time_final = time_length # I think "time_length" is a weird variable name
     omega = 2
     uuid_str = uuid.uuid4()
 
@@ -231,96 +231,65 @@ def experiment_2( likelihood_power = 1. ):
     data_sampler_info = [state_space,emission_sampler,obs_times]
     
     # likelihood of obs
-    
-    # P(\deta_w + l_i | v_i ) \sim A? \sim B? \sim A_hat? I think A_hat. Rao says "B".... why?
     emission_info = [emission_likelihood,poisson_process_B,
                      float(time_length),likelihood_power,state_space]
     smjp_emission = partial(smjp_emission_unset,*emission_info)
 
-
-    # ----------------------------------------------------------------------
-    #
-    # gibbs sampling for-loop
-    #
-    # ----------------------------------------------------------------------
-
-    aggregate = {'W':[],'V':[],'T':[],'prob':[],'data':[]}
-    aggregate_prior = {'V':[],'T':[]}
-    number_of_samples = 12000
-    smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,time_length]
+    # initial state prior
     pi_0 = MultinomialDistribution({'prob_vector': np.ones(s_size)/s_size,\
                                     'translation':state_space})
-    V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
-    _V,_T = V,T
-    print("--------------")
-    print(V)
-    print(T)
-    print("|T| = {}".format(len(T)))
-    print("--------------")
 
+    print("-- data --")
+    print(data)
+    # ----------------------------------------------------------------------
+    #
+    # sampler
+    #
+    # ----------------------------------------------------------------------
+    number_of_samples = 12000
     save_iter = 300
-    """
-    -> compute the alpha terms via monte-carlo method for a 1 step grid
-    -> the monte carlo should compute everything.
-    -> compute the alpha terms by hand for 1 pass
-    -> two states; 
-    -> at least 
-    """
-    if False: #True:
-        for i in range(number_of_samples):
+    smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,time_length]
+    V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
+    filename = None
+    load_file = True
 
-            # ~~ sample the data given the sample path ~~
-            # data = sample_data_posterior(V,T,*data_sampler_info)
-            # print('data',data)
+    # --------------------
+    # --- rao-teh (rt) ---
+    # --------------------
+    raoteh_input = [number_of_samples,
+                    save_iter,
+                    smjp_sampler_input,
+                    data,
+                    pi_0,
+                    poisson_process_A_hat,
+                    V,T,
+                    uuid_str,
+                    omega,
+                    filename,
+                    load_file]
+    rt_aggregate,rt_aggregate_prior,rt_uuid_str,rt_omega = raoteh(*raoteh_input)
 
-            # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
-            p_u_str = '{}_{}'.format(uuid_str,i)
-            W = sample_smjp_event_times(poisson_process_A_hat,V,T,time_length)
-            V,T,prob = sample_smjp_trajectory_posterior(W,data,*smjp_sampler_input,p_u_str)
-            print("---------")
-            print(W)
-            print(V)
-            print(T)
-            print("|T| = {}".format(len(T)))
-            print("---------")
-            aggregate['W'].append(W)
-            aggregate['V'].append(V)
-            aggregate['T'].append(T)
-            aggregate['prob'].append(prob)
-            aggregate['data'].append(data) # when running Gibbs for P(x|\theta) & P(\theta|x)
-            print('posterior',np.c_[V,T])
+    # -------------------
+    # --- pmcmc (pm) ----
+    # -------------------
+    number_of_particles = 10
+    load_file = False
+    pmcmc_input = [number_of_particles,
+                   number_of_samples,
+                   save_iter,
+                   state_space,
+                   hazard_A,
+                   emission_likelihood,
+                   time_final,
+                   data,
+                   pi_0,
+                   uuid_str,
+                   omega,
+                   filename,
+                   load_file]
+    #pm_aggregate,pm_aggregate_prior,pm_uuid_str,pm_omega = pmcmc(*pmcmc_input)
+    pm_aggregate,pm_uuid_str = pmcmc(*pmcmc_input)
 
-            # take some samples from the prior for de-bugging the mcmc sampler
-            _V,_T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
-            aggregate_prior['V'].append(_V)
-            aggregate_prior['T'].append(_T)
-            print('prior',np.c_[_V,_T])
-            print("i = {}".format(i))
-
-            if (i % save_iter) == 0 and ( i > 0 ):
-                print("saving current samples to file.")
-                save_current_results(aggregate,aggregate_prior,uuid_str,i)
-
-        # save to memory
-        pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,
-                           'uuid_str':uuid_str,'omega':omega}
-        with open('results_{}_final.pkl'.format(uuid_str),'wb') as f:
-            pickle.dump(pickle_mem_dump,f)
-    else:
-        # load to memory
-        fn = "results_45c2b10d-0052-4a9d-a210-e85e58edfe7e_1800.pkl"
-        #fn = "final_results/results_1b584b67-cfd4-442b-a737-64d30c296e91_1200.pkl"
-        #fn = "final_results/results_eeb56a2f-cbf9-4aba-bd4d-f68fe2c1dd0f_8t_final.pkl"
-        #fn = "results_043b94d0-56b9-4d68-847d-e52148d2401e_final.pkl" # no omega
-        #fn = "results_541f8ddf-1342-41db-8daa-855a7041081e_final.pkl"
-        with open(fn,'rb') as f:
-            pickle_mem_dump = pickle.load(f)
-        aggregate = pickle_mem_dump['agg']
-        aggregate_prior = pickle_mem_dump['agg_prior']
-        uuid_str = pickle_mem_dump['uuid_str']
-        #omega = pickle_mem_dump['omega']
-
-    print("omega: {}".format(omega))
 
     # --------------------------------------------------
     #
@@ -328,70 +297,12 @@ def experiment_2( likelihood_power = 1. ):
     # 
     # -------------------------------------------------
 
-    # compute [(i) total time, (ii) # jumps ] statistics over samples
-    time_info,jump_info = compute_evaluation_chain_metrics(aggregate,state_space)
-    time_info_prior,jump_info_prior = compute_evaluation_chain_metrics(aggregate_prior,state_space)
+    generate_sample_report_twochainz(rt_aggregate,rt_aggregate_prior,
+                                     'posterior','prior',
+                                     state_space,uuid_str)
+    # generate_sample_report_twochainz(rt_aggregate_prior,pm_aggregate_prior,'raoteh-pr','pm-pr')
+    # generate_sample_report_twochainz(rt_aggregate,pm_aggregate,'raoteh','pm')
 
-
-    # NO; just take "X": modift \theta frequency via P(\theta,x) = P(\theta | x) * P(x | \theta)
-    # if 'data' in aggregate.keys():
-    #     posterior_data = aggregate['data']
-    #     time_info,jump_info = modify_info_via_data_samples(time_info,jump_info,posterior_data,em_l)
-        
-
-    agg_time_info,agg_jump_info = compute_metric_summaries(time_info,jump_info,state_space)
-    agg_time_info_prior,agg_jump_info_prior = compute_metric_summaries(time_info_prior,jump_info_prior,state_space)
-
-    print("-=-=-=- Aggregate Information -=-=-=-")
-    print(" ------------ ")
-    print(" --> Time <-- ")
-    print(" ------------ ")
-    print('--> posterior <--')
-    print(agg_time_info)
-    print('--> prior <--')
-    print(agg_time_info_prior)
-
-    print(" ------------ ")
-    print(" --> Jumps <-- ")
-    print(" ------------ ")
-    print('--> posterior <--')
-    print(agg_jump_info)
-    print('--> prior <--')
-    print(agg_jump_info_prior)
-
-    print("-"*30)
-
-    # compact the results for returning
-    metrics_posterior = {'time':time_info,
-                         'jump':jump_info,
-                         'agg_time':agg_time_info,
-                         'agg_jump':agg_jump_info,
-                         }
-    metrics_prior = {'time':time_info_prior,
-                     'jump':jump_info_prior,
-                     'agg_time':agg_time_info_prior,
-                     'agg_jump':agg_jump_info_prior,
-    }
-
-    # create density plots of values
-    # plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
-    compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_prior,state_space)
-    exit()
-    
-    # create plots of metrics
-    file_id = 'posterior'
-    plot_metric_traces(time_info,jump_info,state_space,uuid_str,file_id)
-    plot_metric_autocorrelation(time_info,jump_info,state_space,uuid_str,file_id)
-    create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
-
-    file_id = 'prior'
-    plot_metric_traces(time_info_prior,jump_info_prior,state_space,uuid_str,file_id)
-    plot_metric_autocorrelation(time_info_prior,jump_info_prior,state_space,uuid_str,file_id)
-    create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
-    print("Finished computing metrics for experiment id {}".format(uuid_str))
-    exit()
-
-    return metrics_posterior,metrics_prior,aggregate,aggregate_prior
 
 
 def experiment_3():
@@ -405,106 +316,6 @@ def experiment_3():
         m_posterior,m_prior,agg_posterior,agg_prior = experiment_2(inv_temp)
 
         
-def save_current_results(aggregate,aggregate_prior,uuid_str,n_iters):
-    pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,'uuid_str':uuid_str}
-    with open('results_{}_{}.pkl'.format(uuid_str,n_iters),'wb') as f:
-        pickle.dump(pickle_mem_dump,f)
-
-def compute_ks_posterior_prior(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
-    # not used but for records
-    skip = 1
-    n = len(time_info[state_space[0]][::skip])
-    m = len(time_info_prior[state_space[0]][::skip])
-    alpha = 0.05
-    c_alpha = 1.224
-    ub = c_alpha * np.sqrt( ( n + m ) / ( n * m ) )
-
-    print("[skip: {}]".format(skip))
-    ssize = len(state_space)
-    times_ks = np.zeros(ssize*2).reshape(ssize,2)
-    for state_idx,state in enumerate(state_space):
-        # times = npr.rand(len(time_info[state]))
-        times = time_info[state][::skip]
-        times_pr = time_info_prior[state][::skip]
-        ks_result = sss.ks_2samp(times,times_pr)
-        times_ks[state_idx,0] = ks_result.statistic
-        times_ks[state_idx,1] = ks_result.pvalue
-    
-    jumps_ks = np.zeros(ssize*2).reshape(ssize,2)
-    for state_idx,state in enumerate(state_space):
-        jumps = jump_info[state][::skip]
-        jumps_pr = jump_info_prior[state][::skip]
-        ks_result = sss.ks_2samp(jumps,jumps_pr)
-        jumps_ks[state_idx,0] = ks_result.statistic
-        jumps_ks[state_idx,1] = ks_result.pvalue
-
-    print(" ---> KS Results <--- ")
-    print("Reject if D_{{n,m}} > {}".format(ub))
-    print("--> times_ks")
-    print("[stat,pvalue,do_we_reject?]")
-    is_reject = times_ks[:,0] > ub
-    print(np.c_[times_ks,is_reject])
-    print("--> jumps_ks")
-    print("[stat,pvalue,do_we_reject?]")
-    is_reject = jumps_ks[:,0] > ub
-    print(np.c_[jumps_ks,is_reject])
-    print("-"*30)
-
-def modify_info_via_data_samples(_time_info,_jump_info,posterior_data,emission_likelihood):
-    """
-    Currently, this is easy since the "data" is sampled at fixed points
-    in time. However, how would we run this experiment if the observation
-    times themselves changed? 
-
-    E.g. 
-
-    Currently we have observations at [0,1/3,2/3,4/3,5/3]. To compute
-    P(\theta) = \sum_x P(\theta,x) we append examples according to the 
-    frequency of the data sample, x, associated with the \theta sample.
-    
-    What if the samples were from some distribution over the continuous range [0,2]?
-
-    I think is actually straightforward. We just compute the likelihood of the 
-    observations given the data. That is, we have some form of P(x|\theta) we know
-    aprior or we use non-parametrics.
-    """
-
-    state_space = [s for s in _time_info.keys()]
-    # get the (estimated) likelihood for each x value
-    data_samples = [ str(data.data) for data in posterior_data ]
-    results = np.unique(data_samples,return_counts=True)
-    # makes us need to repeat fewer numbers
-    adjusted_counts = results[1] - np.min(results[1])
-    tally_dict = dict(zip(results[0],adjusted_counts))
-
-    f_mult = []
-    for data,V,T,tis,jis in zip(...):
-        data_l = cond_x_theta(data,V,T)
-        _f_mult = get_fmult(cond_x_theta,data,V,T)
-        f_mult.append(_f_mult)
-    
-
-
-    # for (\theta,x) repeat \theta based on associated \hat{p}(x | \theta)
-    time_info = {s:[] for s in state_space}
-    jump_info = {s:[] for s in state_space}
-    for state_idx,state in enumerate(state_space):
-        tis = _time_info[state]
-        jis = _jump_info[state]
-        cond_x_st = partial(emission_likelihood,state)
-        f_mult = get_sample_frequency_multiplier(cond_x_st,state_space)
-        # the first sample (V,T) is from the prior; not saved.
-        for data,time,jump in zip(data_samples[1:],tis[:-1],jis[:-1]):
-            freq = tally_dict[str(data)]
-            r_time = [time]*freq
-            r_jump = [jump]*freq
-            time_info[state].extend(r_time)
-            jump_info[state].extend(r_jump)
-    """
-    next step is the "sum" part of this...
-    """
-    return time_info,jump_info
-
 def get_sample_frequency_multiplier(cond_x_st,states):
     """
     we resample the posterior samples given the frequency
@@ -523,24 +334,6 @@ def get_sample_frequency_multiplier(cond_x_st,states):
     print(probs)
     return probs
     
-def plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
-    for state in state_space:
-        times = time_info[state]
-        times_pr = time_info_prior[state]
-        sns.distplot(times,hist=False,rug=True,label='{}_post'.format(state))
-        sns.distplot(times_pr,hist=False,rug=True,label='{}_prior'.format(state))
-    plt.show()
-    plt.clf()
-    
-    for state in state_space:
-        jumps = jump_info[state]
-        jumps_pr = jump_info_prior[state]
-        sns.distplot(jumps,hist=False,rug=True,label='{}_post'.format(state))
-        sns.distplot(jumps_pr,hist=False,rug=True,label='{}_prior'.format(state))
-    plt.show()
-    plt.clf()
-
-
 def verify_hazard_function(h_create,state_space,aug_state_space):
     import seaborn as sns
     import matplotlib.pyplot

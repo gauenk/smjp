@@ -586,7 +586,7 @@ def smjp_hazard_sampler_unset(state_space,h_create,hold_time,current_state,next_
     if hold_time is None: # sampling over hold_time "\tau" given (current_state,next_state)
         sample = h_create(current_state,next_state).sample(n)
         return sample
-    else: # sampling over next state given (hold_time, current_state)
+    elif next_state is None: # sampling over next state given (hold_time, current_state)
         assert next_state is None,"next state must be None"
         state_rate = []
         for next_state in state_space:
@@ -599,6 +599,9 @@ def smjp_hazard_sampler_unset(state_space,h_create,hold_time,current_state,next_
         for state_index in state_index_l:
             sampled_state += [state_space[state_index]]
         return sampled_state
+    else: # sampling over hold_time conditioned on current holdtime
+        sample = h_create(current_state,next_state).sample(n)
+        return sample
 
 def enumerate_state_space(grid,states):
     """
@@ -661,11 +664,18 @@ def sample_smjp_event_times(poisson_process,V,T,time_length):
 #
 
 def sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, t_end, t_start = 0):
+    sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, t_end, t_start = 0, v_0=None)
+
+def sample_smjp_trajectory_prior(hazard_A, pi_0, state_space,
+                                 t_end, t_start = 0, v_0 = None):
     """
     ~~ Sampling from the prior ~~
     """
     # init the variables
-    v = [pi_0.s()]
+    if v_0 is None:
+        v = [pi_0.s()]
+    else:
+        v = [v_0]        
     w = [t_start]
     v_curr,w_curr = v[0],w[0]
 
@@ -857,7 +867,7 @@ def create_toy_data(state_space,time_length,number_of_observations,emission_samp
 def smjp_emission_multinomial_create_unset(state_space,state_curr):
     mn_probs = np.ones(len(state_space))
     state_curr_index = state_space.index(state_curr)
-    mn_probs[state_curr_index] = 1
+    mn_probs[state_curr_index] = 10
     mn_probs /= np.sum(mn_probs)
     distribution = Multinomial({'prob_vector':mn_probs,'translation':state_space})
     return distribution
