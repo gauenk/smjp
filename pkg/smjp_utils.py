@@ -382,9 +382,10 @@ class sMJPWrapper(object):
         s_curr = a_slice # current state
         if self.sampler_bool:
             # reset "sampler" bool so we don't mis-interpret this later
-            self.sampler_n = None
             self.sampler_bool = False
-            return self.sampler(self.sampler_hold_time,s_curr,None,self.sampler_n)
+            samples = self.sampler(self.sampler_hold_time,s_curr,None,self.sampler_n)
+            self.sampler_n = None
+            return samples
         result = self.state_function(s_curr,None,self.observation,
                                    self.state_space,*self.state_function_args)
         return result
@@ -397,9 +398,9 @@ class sMJPWrapper(object):
         # logic for functions based on current & next state (maybe 
         if self.sampler_bool: 
             # reset "sampler" bool so we don't mis-interpret this later
-            self.sampler_n = None
             self.sampler_bool = False 
             sample = self.sampler(self.sampler_hold_time,s_curr,s_next,self.sampler_n)
+            self.sampler_n = None
             return sample
         result = self.state_function(s_curr,s_next,self.observation,
                                    self.state_space,*self.state_function_args)

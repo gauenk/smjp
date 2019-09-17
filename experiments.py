@@ -247,7 +247,7 @@ def experiment_2( likelihood_power = 1. ):
     # sampler
     #
     # ----------------------------------------------------------------------
-    number_of_samples = 12000
+    number_of_samples = 6000
     save_iter = 300
     smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,time_length]
     V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
@@ -274,9 +274,8 @@ def experiment_2( likelihood_power = 1. ):
     # --- pmcmc (pm) ----
     # -------------------
     number_of_particles = 10
-    # filename = "results_pmcmc_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
-    filename = "final_results/results_pmcmc_72a1237c-5ea7-4887-a0d0-c06a1b5fdf55_final.pkl"
-    load_file = True
+    filename = None
+    load_file = False
     pmcmc_input = [number_of_particles,
                    number_of_samples,
                    save_iter,
