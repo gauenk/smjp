@@ -169,9 +169,10 @@ def experiment_2( likelihood_power = 1. ):
     #
     # ------------------------------------------
 
-    shape_mat = npr.uniform(0.6,3.0,s_size**2).reshape((s_size,s_size))
-    # shape_mat = npr.uniform(.8,.9,s_size**2).reshape((s_size,s_size))
-    # shape_mat = npr.uniform(2.1,2.2,s_size**2).reshape((s_size,s_size))
+    shape_mat = np.array([[1.606 1.933 0.865],
+                          [1.938 0.869 1.751],
+                          [1.69  0.64  0.696]])
+    # shape_mat = npr.uniform(0.6,3.0,s_size**2).reshape((s_size,s_size))
     scale_mat = np.ones((s_size,s_size)) 
     scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,omega)
     scale_mat_hat = create_upperbound_scale(shape_mat,scale_mat,omega-1)
