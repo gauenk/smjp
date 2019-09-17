@@ -169,9 +169,9 @@ def experiment_2( likelihood_power = 1. ):
     #
     # ------------------------------------------
 
-    shape_mat = np.array([[1.606 1.933 0.865],
-                          [1.938 0.869 1.751],
-                          [1.69  0.64  0.696]])
+    shape_mat = np.array([[1.606, 1.933, 0.865],
+                          [1.938, 0.869, 1.751],
+                          [1.69,  0.64,  0.696]])
     # shape_mat = npr.uniform(0.6,3.0,s_size**2).reshape((s_size,s_size))
     scale_mat = np.ones((s_size,s_size)) 
     scale_mat_tilde = create_upperbound_scale(shape_mat,scale_mat,omega)
@@ -255,7 +255,7 @@ def experiment_2( likelihood_power = 1. ):
     # --------------------
     # --- rao-teh (rt) ---
     # --------------------
-    filename = "./results_raoteh_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
+    filename = "final_results/results_raoteh_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
     load_file = True
     raoteh_input = [number_of_samples,
                     save_iter,
@@ -275,7 +275,7 @@ def experiment_2( likelihood_power = 1. ):
     # -------------------
     number_of_particles = 10
     filename = "results_pmcmc_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
-    load_file = True
+    load_file = False
     pmcmc_input = [number_of_particles,
                    number_of_samples,
                    save_iter,
@@ -291,7 +291,7 @@ def experiment_2( likelihood_power = 1. ):
                    load_file]
     #pm_aggregate,pm_aggregate_prior,pm_uuid_str,pm_omega = pmcmc(*pmcmc_input)
     pm_aggregate,pm_uuid_str = pmcmc(*pmcmc_input)
-
+    
     print(rt_uuid_str)
     print(pm_uuid_str)
     # overwrite if both equal

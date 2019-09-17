@@ -34,8 +34,8 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
     # print init sample
     print("--------------")
     p_u_str = 'pmcmc_{}_init'.format(uuid_str)
-    V,T,prob = smjp_smc(**smc_input)
-    print("--- Likelihood {} ---".format(prob))
+    V,T,lprob = smjp_smc(**smc_input)
+    print("--- Likelihood {} ---".format(lprob))
     print(np.c_[V,T])
     print("--------------")
 
@@ -46,13 +46,13 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
     # run MH mcmc with proposals from SMC
     for i in range(number_of_samples):
         # regular,old mh-mcmc
-        V_prop,T_prop,prob_prop = smjp_smc(**smc_input)
-        coin_flip = np.log(npr.uniform(0,1,1))
-        if coin_flip < ( prob_prop / prob ):
-            V,T,prob = V_prop,T_prop,prob_prop
+        V_prop,T_prop,lprob_prop = smjp_smc(**smc_input)
+        coin_flip = np_log(npr.uniform(0,1,1)[0])[0]
+        # print("lprop_prop - lprov: {:.3f}  |lprob_prop: {:.3f}   | lprob: {:.3f}   | coin_flip: {:.3f}   ".format(lprob_prop-lprob,lprob_prop,lprob,coin_flip))
+        if coin_flip < ( lprob_prop - lprob ):
+            V,T,lprob = V_prop,T_prop,lprob_prop
 
         # -- print summary & status --
-        p_u_str = 'pmcmc_{}_{}'.format(uuid_str,i)
         if i % print_iter == 0:
             print("[{} / {}] samples".format(i,number_of_samples))
             save_samples_in_pickle(aggregate,None,None,'pmcmc',uuid_str,i)
@@ -60,7 +60,7 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
         # -- collection samples --
         aggregate['V'].append(V)
         aggregate['T'].append(T)
-        aggregate['prob'].append(prob)
+        aggregate['prob'].append(lprob)
     save_samples_in_pickle(aggregate,None,None,'pmcmc',uuid_str)
 
     return aggregate,uuid_str
@@ -254,7 +254,8 @@ def smjp_smc(*args,**kwargs):
 
                 if w_next >= t_next_obs: # achieved!, compute some weights
                     y_index = states.index(y[tidx])
-                    W[p][tidx] = emission(y_index)[v_p]
+                    prob = emission(y_index)[v_p]
+                    W[p][tidx] = np_log(prob)
                     break # break the "while(True)"
                 else: # not run long enough; keep on samplin'
                     t_curr = w_next
@@ -280,13 +281,13 @@ def smjp_smc(*args,**kwargs):
         T = [ T[i] for i in resample ]
 
     final_path_index = sampleDiscrete(W[:,tidx],1)
-    likelihood = np.sum(Z)
+    log_likelihood = np.sum(Z)
     # -- Rao says: sample at first index --
     V[0] = V[0] + [V[0][-1]]
     T[0] += [t_final]
     path_states = V[0]
     path_times = T[0]
-    return path_states,path_times,likelihood
+    return path_states,path_times,log_likelihood
 
 
 def smc(*args,**kwargs):
