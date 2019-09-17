@@ -228,7 +228,7 @@ def experiment_2( likelihood_power = 1. ):
     emission_sampler = sMJPWrapper(smjp_emission_sampler,state_space,smjp_emission_create)
     emission_likelihood = sMJPWrapper(smjp_emission_likelihood,state_space,smjp_emission_create)
     data_samples = create_toy_data(state_space,time_length,num_of_obs,emission_sampler)
-    #data_samples = [1,3,2,1] # deterministic for testing
+    data_samples = [1,3,2,1] # deterministic for testing
     data = sMJPDataWrapper(data=data_samples,time=obs_times)
     data_sampler_info = [state_space,emission_sampler,obs_times]
     
