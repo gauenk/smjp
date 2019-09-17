@@ -55,7 +55,7 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
         p_u_str = 'pmcmc_{}_{}'.format(uuid_str,i)
         if i % print_iter == 0:
             print("[{} / {}] samples".format(i,number_of_samples))
-            save_samples_in_pickle(aggregate,None,None,uuid_str,i)
+            save_samples_in_pickle(aggregate,None,None,'pmcmc',uuid_str,i)
 
         # -- collection samples --
         aggregate['V'].append(V)

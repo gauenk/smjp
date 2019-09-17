@@ -340,11 +340,11 @@ def plot_sample_densities(time_info,time_info_prior,jump_info,jump_info_prior,st
     plt.clf()
 
 
-def save_samples_in_pickle(aggregate,aggregate_prior,omega,uuid_str,n_iters=None):
+def save_samples_in_pickle(aggregate,aggregate_prior,omega,expName,uuid_str,n_iters=None):
     if n_iters is None:
-        fn = 'results_{}_final.pkl'.format(uuid_str)
+        fn = 'results_{}_{}_final.pkl'.format(expName,uuid_str)
     else:
-        fn = 'results_{}_{}.pkl'.format(uuid_str,n_iters)        
+        fn = 'results_{}_{}_{}.pkl'.format(expName,uuid_str,n_iters)        
     pickle_mem_dump = {'agg':aggregate,'agg_prior':aggregate_prior,\
                        'uuid_str':uuid_str,'omega':omega}
     with open(fn,'wb') as f:

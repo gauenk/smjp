@@ -250,13 +250,12 @@ def experiment_2( likelihood_power = 1. ):
     save_iter = 300
     smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,time_length]
     V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
-    filename = "./results_smjp_raoteh.pkl"
-    load_file = True
 
     # --------------------
     # --- rao-teh (rt) ---
     # --------------------
-    #filename = "final_results/results_043b94d0-56b9-4d68-847d-e52148d2401e_final.pkl"
+    filename = "./results_raoteh_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
+    load_file = True
     raoteh_input = [number_of_samples,
                     save_iter,
                     smjp_sampler_input,
@@ -274,8 +273,8 @@ def experiment_2( likelihood_power = 1. ):
     # --- pmcmc (pm) ----
     # -------------------
     number_of_particles = 10
+    filename = "results_raoteh_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
     load_file = True
-    filename = "results_smjp_pmcmc.pkl"
     pmcmc_input = [number_of_particles,
                    number_of_samples,
                    save_iter,

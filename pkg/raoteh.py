@@ -58,7 +58,7 @@ def raoteh(number_of_samples,save_iter,smjp_sampler_input,data,pi_0,\
 
             if (i % save_iter) == 0 and ( i > 0 ):
                 print("saving current samples to file.")
-                save_samples_in_pickle(aggregate,aggregate_prior,omega,uuid_str,i)
+                save_samples_in_pickle(aggregate,aggregate_prior,omega,'raoteh',uuid_str,i)
         # save to memory
         p_u_str = 'raoteh_{}'.format(uuid_str)
         save_samples_in_pickle(aggregate,aggregate_prior,omega,p_u_str,None)
