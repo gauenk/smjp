@@ -300,7 +300,7 @@ class WeibullDistribution(Distribution):
             cdf_at_m = 1 - np.exp( - (hold_time / scale ) ** shape )
             s = []
             for i in range(n):
-                u = npr.uniform(cdf_at_m,1)
+                u = npr.uniform(cdf_at_m,1)[0]
                 sample = scale * np.power( -np.log(1 - u), 1./shape )
                 s.append(sample)
         if n == 1:

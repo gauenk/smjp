@@ -228,6 +228,7 @@ def experiment_2( likelihood_power = 1. ):
     emission_sampler = sMJPWrapper(smjp_emission_sampler,state_space,smjp_emission_create)
     emission_likelihood = sMJPWrapper(smjp_emission_likelihood,state_space,smjp_emission_create)
     data_samples = create_toy_data(state_space,time_length,num_of_obs,emission_sampler)
+    #data_samples = [1,3,2,1] # deterministic for testing
     data = sMJPDataWrapper(data=data_samples,time=obs_times)
     data_sampler_info = [state_space,emission_sampler,obs_times]
     
@@ -255,7 +256,7 @@ def experiment_2( likelihood_power = 1. ):
     # --------------------
     # --- rao-teh (rt) ---
     # --------------------
-    filename = "final_results/results_raoteh_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
+    filename = None
     load_file = False
     raoteh_input = [number_of_samples,
                     save_iter,
@@ -273,8 +274,8 @@ def experiment_2( likelihood_power = 1. ):
     # -------------------
     # --- pmcmc (pm) ----
     # -------------------
-    number_of_particles = 20
-    filename = "results_pmcmc_0afc36f4-01a9-4eb0-b0d2-df6e8807cfbb_final.pkl"
+    number_of_particles = 10
+    filename = "results_pmcmc_cd23e247-883f-42ce-ba64-649bd5bb7dcd_final.pkl"
     load_file = False
     pmcmc_input = [number_of_particles,
                    number_of_samples,
@@ -291,6 +292,23 @@ def experiment_2( likelihood_power = 1. ):
                    load_file]
     #pm_aggregate,pm_aggregate_prior,pm_uuid_str,pm_omega = pmcmc(*pmcmc_input)
     pm_aggregate,pm_uuid_str = pmcmc(*pmcmc_input)
+
+    # number_of_particles = 20
+    # load_file = False
+    # pmcmc_input = [number_of_particles,
+    #                number_of_samples,
+    #                save_iter,
+    #                state_space,
+    #                hazard_A,
+    #                emission_likelihood,
+    #                time_final,
+    #                data,
+    #                pi_0,
+    #                uuid_str,
+    #                omega,
+    #                filename,
+    #                load_file]
+    # rt_aggregate,rt_uuid_str = pmcmc(*pmcmc_input)
     
     print(rt_uuid_str)
     print(pm_uuid_str)

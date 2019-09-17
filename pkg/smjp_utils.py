@@ -503,7 +503,6 @@ class PoissonProcess(object):
         # print('interval',interval)
         if len(samples) > 0:
             samples = samples + interval[0] # handles the offset by interval
-        # print('samples',samples)
         return samples
 
     def l(self,*args,**kwargs):
@@ -584,10 +583,13 @@ def weibull_hazard_create_unset(shape_mat,scale_mat,state_space,state_curr,state
 
 # sampler for sampling (1) prior trajectories & (2) discretizations
 def smjp_hazard_sampler_unset(state_space,h_create,hold_time,current_state,next_state,n=1):
+    # print("[[ smjp_hazard_sampler_unset ]]")
     if hold_time is None: # sampling over hold_time "\tau" given (current_state,next_state)
+        # print(" [[ hold_time ]]")
         sample = h_create(current_state,next_state).sample(n)
         return sample
     elif next_state is None: # sampling over next state given (hold_time, current_state)
+        # print(" [[ next state ]]")
         assert next_state is None,"next state must be None"
         state_rate = []
         for next_state in state_space:
@@ -601,6 +603,7 @@ def smjp_hazard_sampler_unset(state_space,h_create,hold_time,current_state,next_
             sampled_state += [state_space[state_index]]
         return sampled_state
     else: # sampling over hold_time conditioned on current holdtime
+        # print("[[ conditional ]]")
         sample = h_create(current_state,next_state).sample(n,hold_time=hold_time)
         return sample
 
