@@ -61,8 +61,7 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
         aggregate['V'].append(V)
         aggregate['T'].append(T)
         aggregate['prob'].append(prob)
-    p_u_str = 'pmcmc_{}'.format(uuid_str)
-    save_samples_in_pickle(aggregate,None,None,p_u_str)
+    save_samples_in_pickle(aggregate,None,None,'pmcmc',uuid_str)
 
     return aggregate,uuid_str
 

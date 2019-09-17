@@ -273,7 +273,7 @@ def experiment_2( likelihood_power = 1. ):
     # --- pmcmc (pm) ----
     # -------------------
     number_of_particles = 10
-    filename = "results_raoteh_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
+    filename = "results_pmcmc_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
     load_file = True
     pmcmc_input = [number_of_particles,
                    number_of_samples,
@@ -290,6 +290,12 @@ def experiment_2( likelihood_power = 1. ):
                    load_file]
     #pm_aggregate,pm_aggregate_prior,pm_uuid_str,pm_omega = pmcmc(*pmcmc_input)
     pm_aggregate,pm_uuid_str = pmcmc(*pmcmc_input)
+
+    print(rt_uuid_str)
+    print(pm_uuid_str)
+    # overwrite if both equal
+    if rt_uuid_str == pm_uuid_str:
+        uuid_str = rt_uuid_str
 
 
     # --------------------------------------------------

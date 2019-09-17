@@ -61,7 +61,7 @@ def raoteh(number_of_samples,save_iter,smjp_sampler_input,data,pi_0,\
                 save_samples_in_pickle(aggregate,aggregate_prior,omega,'raoteh',uuid_str,i)
         # save to memory
         p_u_str = 'raoteh_{}'.format(uuid_str)
-        save_samples_in_pickle(aggregate,aggregate_prior,omega,p_u_str,None)
+        save_samples_in_pickle(aggregate,aggregate_prior,omega,'raoteh',uuid_str)
     else:
         # load to memory
         fn = "results_45c2b10d-0052-4a9d-a210-e85e58edfe7e_1800.pkl"
