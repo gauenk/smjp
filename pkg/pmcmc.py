@@ -32,12 +32,13 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
     print("number of samples: {}".format(number_of_samples))
 
     # print init sample
-    print("--------------")
+    print("----------------------------")
     p_u_str = 'pmcmc_{}_init'.format(uuid_str)
     V,T,lprob = smjp_smc(**smc_input)
     print("--- Likelihood {} ---".format(lprob))
+    print("--- Initial Sample (V,T) ---")
     print(np.c_[V,T])
-    print("--------------")
+    print("----------------------------")
 
     # create collection bins
     aggregate = {'V':[],'T':[],'prob':[]}
@@ -49,7 +50,7 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
         V_prop,T_prop,lprob_prop = smjp_smc(**smc_input)
         coin_flip = np_log(npr.uniform(0,1,1)[0])[0]
         # print("lprop_prop - lprov: {:.3f}  |lprob_prop: {:.3f}   | lprob: {:.3f}   | coin_flip: {:.3f}   ".format(lprob_prop-lprob,lprob_prop,lprob,coin_flip))
-        if coin_flip < ( lprob_prop - lprob ):
+        if coin_flip <= ( lprob_prop - lprob ):
             V,T,lprob = V_prop,T_prop,lprob_prop
 
         # -- print summary & status --
@@ -268,10 +269,10 @@ def smjp_smc(*args,**kwargs):
         # ------------------------------------------
         # normalize the weights for the observation
         # ------------------------------------------
-        Z[tidx] = logsumexp(W[:,tidx]) # across all particles
-        W[:,tidx] -= Z[tidx]
-        W[:,tidx] = np.exp(W[:,tidx])
-        Z[tidx] -= np.log(N) # Z = (1/N)\hat{Z}
+        Z[tidx] = logsumexp(W[:,tidx]) # sum w_k^p across all particles p for fixed k
+        W[:,tidx] -= Z[tidx] # normalize the weights
+        W[:,tidx] = np.exp(W[:,tidx]) # we keep the exp of the weights
+        Z[tidx] -= np.log(N) # Z = (1/N)\hat{Z} p(x_i|y_i) = 1/N for all samples
 
         # ------------------------------------------
         # resample according to the weights
@@ -280,15 +281,11 @@ def smjp_smc(*args,**kwargs):
         V = [ V[i] for i in resample ]
         T = [ T[i] for i in resample ]
 
-    final_path_index = sampleDiscrete(W[:,tidx],1)
-    log_likelihood = np.sum(Z)
     # -- Rao says: sample at first index --
-    V[0] = V[0] + [V[0][-1]]
-    T[0] += [t_final]
-    path_states = V[0]
-    path_times = T[0]
+    path_states = V[0] + [ V[0][-1] ]
+    path_times = T[0] + [ t_final ]
+    log_likelihood = np.sum(Z)
     return path_states,path_times,log_likelihood
-
 
 def smc(*args,**kwargs):
     """
