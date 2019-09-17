@@ -600,7 +600,7 @@ def smjp_hazard_sampler_unset(state_space,h_create,hold_time,current_state,next_
             sampled_state += [state_space[state_index]]
         return sampled_state
     else: # sampling over hold_time conditioned on current holdtime
-        sample = h_create(current_state,next_state).sample(n)
+        sample = h_create(current_state,next_state).sample(n,hold_time=hold_time)
         return sample
 
 def enumerate_state_space(grid,states):

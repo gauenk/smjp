@@ -274,8 +274,9 @@ def experiment_2( likelihood_power = 1. ):
     # --- pmcmc (pm) ----
     # -------------------
     number_of_particles = 10
-    filename = "results_pmcmc_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
-    load_file = False
+    # filename = "results_pmcmc_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
+    filename = "final_results/results_pmcmc_72a1237c-5ea7-4887-a0d0-c06a1b5fdf55_final.pkl"
+    load_file = True
     pmcmc_input = [number_of_particles,
                    number_of_samples,
                    save_iter,

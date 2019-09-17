@@ -264,10 +264,12 @@ class WeibullDistribution(Distribution):
             if (x < 0): return 0 # only non-negative "x"
             if self.is_hazard_rate:
                 ll += np.log(params.shape) - np.log(params.scale) + \
-                      (params.shape - 1) * ( np.ma.log([x]).filled(0) - np.log(params.scale) )
+                      (params.shape - 1) * ( np.ma.log([x]).filled(0) - \
+                                             np.log(params.scale) )
             else:
                 ll += np.log(params.shape) - np.log(params.scale) + \
-                      (params.shape - 1) * ( np.ma.log([x]).filled(0) - np.log(params.scale) ) +\
+                      (params.shape - 1) * ( np.ma.log([x]).filled(0) - \
+                                             np.log(params.scale) ) +\
                       -(x/params.scale)**params.shape
             ll = ll[0]
         else:
@@ -275,22 +277,32 @@ class WeibullDistribution(Distribution):
                 if x < 0: continue # only non-negative "x"
                 if self.is_hazard_rate:
                     ll += np.log(params.shape) - np.log(params.scale) + \
-                          (params.shape - 1) * ( np.ma.log([x]).filled(0) - np.log(params.scale) )
+                          (params.shape - 1) * ( np.ma.log([x]).filled(0) - \
+                                                 np.log(params.scale) )
                 else:
                     ll += np.log(params.shape) - np.log(params.scale) + \
-                          (params.shape - 1) * ( np.ma.log(x).filled(0) - np.log(params.scale) ) +\
+                          (params.shape - 1) * ( np.ma.log(x).filled(0) - \
+                                                 np.log(params.scale) ) +\
                           -(x/params.scale)**params.shape
         return ll
         
     def likelihood(self,x,params = None,**kwargs):
         return np.exp(self.log_likelihood(x,params=params,**kwargs))
     
-    def sample(self,n = 1,params = None,**kwargs):
+    def sample(self,n = 1,params = None,hold_time=None,**kwargs):
         params = self.params_handler('load',params,**kwargs)
-        #s = weibull_min.rvs(params.shape,loc=0,scale=params.scale,size=n)
-        s = npr.weibull(params.shape,size=n)
-        # u = npr.uniform(0,1,1)[0]
-        # s = params.scale * np.power(-np.log(1-u),1./params.shape)
+
+        if hold_time is None: # ordinary sampling from weibull
+            s = npr.weibull(params.shape,size=n)
+        else: # conditional sampling from weibull
+            shape = params['shape']
+            scale = params['scale']
+            cdf_at_m = 1 - np.exp( - (hold_time / scale ) ** shape )
+            s = []
+            for i in range(n):
+                u = npr.uniform(cdf_at_m,1)[0]
+                sample = scale * np.power( -np.log(1 - u), 1./shape )
+                s.append(sample)
         return s
 
 
