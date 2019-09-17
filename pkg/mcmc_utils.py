@@ -276,14 +276,11 @@ def generate_sample_report_twochainz(aggA,aggB,nameA,nameB,state_space,uuid_str)
     plot_metric_autocorrelation(time_info_B,jump_info_B,state_space,uuid_str,file_id)
     create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
     print("Finished computing metrics for experiment id {}".format(uuid_str))
-    return
-    exit()
-    return metrics_A,metrics_B
-
+    return 
 
 def compute_ks_twosample(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
     # not used but for records
-    skip = 100
+    skip = 30
     n = len(time_info[state_space[0]][::skip])
     m = len(time_info_prior[state_space[0]][::skip])
     alpha = 0.05

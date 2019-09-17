@@ -291,10 +291,10 @@ class WeibullDistribution(Distribution):
     
     def sample(self,n = 1,params = None,hold_time=None,**kwargs):
         params = self.params_handler('load',params,**kwargs)
-
         if hold_time is None: # ordinary sampling from weibull
             s = npr.weibull(params.shape,size=n)
         else: # conditional sampling from weibull
+            print("cond")
             shape = params['shape']
             scale = params['scale']
             cdf_at_m = 1 - np.exp( - (hold_time / scale ) ** shape )
@@ -303,6 +303,8 @@ class WeibullDistribution(Distribution):
                 u = npr.uniform(cdf_at_m,1)
                 sample = scale * np.power( -np.log(1 - u), 1./shape )
                 s.append(sample)
+        if n == 1:
+            s = s[0]
         return s
 
 

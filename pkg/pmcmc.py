@@ -249,6 +249,9 @@ def smjp_smc(*args,**kwargs):
                     hold_time_samples += [ hazard_A.sample(current_hold_time)[v_p,state] ]
                 # take the smallest hold-time and move to that state
                 t_hold = np.min(hold_time_samples)
+                # if current_hold_time > 0:
+                #     print("hold_time: {:.3f} | t_hold: {:.3f}"\
+                #           .format(current_hold_time,t_hold))
                 v_next = states[np.argmin(hold_time_samples)]
                 w_next = t_p + t_hold
 

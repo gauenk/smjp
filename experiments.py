@@ -256,7 +256,7 @@ def experiment_2( likelihood_power = 1. ):
     # --- rao-teh (rt) ---
     # --------------------
     filename = "final_results/results_raoteh_cb767c4b-aa35-42b6-8fc9-76213f6551b8_final.pkl"
-    load_file = True
+    load_file = False
     raoteh_input = [number_of_samples,
                     save_iter,
                     smjp_sampler_input,
@@ -273,8 +273,8 @@ def experiment_2( likelihood_power = 1. ):
     # -------------------
     # --- pmcmc (pm) ----
     # -------------------
-    number_of_particles = 10
-    filename = None
+    number_of_particles = 20
+    filename = "results_pmcmc_0afc36f4-01a9-4eb0-b0d2-df6e8807cfbb_final.pkl"
     load_file = False
     pmcmc_input = [number_of_particles,
                    number_of_samples,
@@ -362,6 +362,34 @@ def verify_hazard_function(h_create,state_space,aug_state_space):
 
     plt.legend()
     plt.show()
+
+def verify_conditional_weibull():
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+    import scipy.stats as sss
+    p = Weibull({'shape':1.0,'scale':1.0})
+    regular_samples = p.sample(1000)
+    conditional_samples_A = np.array(p.sample(1000,hold_time=.5))
+    conditional_samples_B = np.array(p.sample(1000,hold_time=10))
+    sns.distplot(regular_samples,hist=True,rug=False,\
+                 label='P( \tau )').set(xlim=(0))
+    sns.distplot(conditional_samples_A,hist=True,rug=False,\
+                 label='P( \tau | \tau > 0.5)').set(xlim=(0))
+    sns.distplot(conditional_samples_B,hist=True,rug=False,\
+                 label='P( \tau | \tau > 10)').set(xlim=(0,20))
+
+    ks_result = sss.ks_2samp(conditional_samples_A - .5,regular_samples)
+    print(ks_result)
+    ks_result = sss.ks_2samp(conditional_samples_B - 10,regular_samples)
+    print(ks_result)
+    ks_result = sss.ks_2samp(conditional_samples_B,regular_samples)
+    print(ks_result)
+    # plt.show()
+
+
+    
+    
+    
 
 """
 TODO: 
