@@ -75,7 +75,7 @@ def compute_beta_term(pi,beta_next,e,obs,time_c,time_n):
     ss_size = len(states)
     betas = np.zeros(ss_size)
     for state_n in range(ss_size):
-        likelihood_data = e(obs)[state_c]
+        likelihood_data = e(obs,state_c)
         # beta_n = np.ma.log(beta_next[state_n]).filled(-np.infty)
         beta_n = beta_next[state_n] # our beta terms are already log
         if np.isinf(likelihood_data) or np.isinf(beta_n):
@@ -223,7 +223,7 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
     # ll_obs = 1 # e(obs)[0] # how to include obs
     init_probs_l = np.zeros(num_of_states)
     for state_idx in range(num_of_states):
-        ll_obs = e(obs)[state_idx]
+        ll_obs = e(obs,state_idx)
         ll_init =  np.ma.log([init_probs.l(state_idx)]).filled(-np.infty)
         init_probs_l[state_idx] = ll_init
         log_alphas[0,state_idx] = ll_init + ll_obs
@@ -310,7 +310,7 @@ def likelihood_and_decoding_hmm(*args,**kwargs):
 
         obs = [O[time_c,time_n],[time_c,time_n]]
         for state_c in range(num_of_states):
-            log_obs = e(obs)[state_c]
+            log_obs = e(obs,state_c)
             if np.isinf(log_obs):
                 log_alphas[time_index,state_c] = -np.infty
                 continue
@@ -346,7 +346,7 @@ def compute_transition_matrix(pi,time_p,time_c):
                          reshape(num_of_states,num_of_states) * (-np.infty)
     for state_p in range(num_of_states):
         for state_c in range(num_of_states):
-            l_t = pi(state_c,state_n,time_c,time_n)
+            l_t = pi(state_p,state_c,time_p,time_c)
             log_transition_mat[state_p,state_c] = l_t
         is_all_infty = np.all(np.isinf(log_transition_mat[state_p,:]))
         if not is_all_infty:

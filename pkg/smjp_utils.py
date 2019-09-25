@@ -81,7 +81,7 @@ class PoissonProcess(object):
             # this is rejection sampling over the truncated distribution
             i = 0
             while (i < N):
-                sample = self.hazard_function.sample( n = 1 )[current_state,state]
+                sample = self.hazard_function.sample( current_state,state, None, n = 1 )
                 if sample <= tau:
                     samples_by_state.append(sample)
                     i += 1
@@ -126,7 +126,7 @@ class PoissonProcess(object):
         front_term = 0
         log_exp_term = 0
         for next_state in self.state_space:
-            front_term += self.hazard_function(tau)[current_state,next_state]
+            front_term += self.hazard_function(tau,current_state,next_state)
             log_exp_term += self.mean_function( interval[0], interval[1], current_state, \
                                                 next_state)
         # print("front_term",front_term)
@@ -231,7 +231,7 @@ def sample_smjp_trajectory_prior(hazard_A, pi_0, state_space,
         # sample all holding times for the next state
         hold_time_samples = []
         for state in state_space:
-            hold_time_samples += [ hazard_A.sample()[v_curr,state] ]
+            hold_time_samples += [ hazard_A.sample(v_curr,state,None) ]
 
         # take the smallest hold-time and move to that state
         t_hold = np.min(hold_time_samples)
@@ -297,7 +297,7 @@ def sample_smjp_trajectory_posterior(W,data,state_space,hazard_A,hazard_B,smjp_e
     #
     # ----------------------------------------------------------------------
 
-    hmm_init = {'emission': emission,
+    hmm_init = {'emission': smjp_e,
                 'transition': pi,
                 'data': data,
                 'state_alphabet': augmented_state_space,
@@ -352,7 +352,7 @@ def sample_data_posterior(V,T,state_space,emission,obs_times):
         time_c = T[0]
         for state,time_n in zip(V[:-1],T[1:]):
             if time_c <= obs_time < time_n: 
-               data_states += [emission.sample(state,1)] 
+                data_states += [emission.sample(state,1)] 
                 data_times += [ obs_time ]
                 break
             time_c = time_n
@@ -372,14 +372,15 @@ def create_toy_data(state_space,time_length,number_of_observations,emission):
 class smjpTransitionFunction(object):
 
     def __init__(self,augmented_state_space,hazard_A,hazard_B):
+        self.state_space = augmented_state_space
         self.augmented_state_space = augmented_state_space
         self.hazard_A = hazard_A
         self.hazard_B = hazard_B
 
     def __call__(self,s_prev_idx,s_curr_idx,time_p,time_c):
         log_probability = 0
-        v_prev,l_prev = augmented_state_space[s_prev_idx]
-        v_curr,l_curr = augmented_state_space[s_curr_idx]
+        v_prev,l_prev = self.augmented_state_space[s_prev_idx]
+        v_curr,l_curr = self.augmented_state_space[s_curr_idx]
         t_hold = time_c - l_prev
         error_conditions = (time_p >= time_c)
         invalid_conditions = (l_prev > l_curr) or (t_hold <= 0)
@@ -397,13 +398,15 @@ class smjpTransitionFunction(object):
             return -np.infty
 
         # P(l_i | l_{i-1}, \delta w_i)
-        l_ratio_A = np.ma.log([ A(v_prev,None,t_hold) ]).filled(-np.infty)[0]
-        l_ratio_B = np.ma.log([ B(v_prev,None,t_hold) ]).filled(-np.infty)[0]
+        A = self.hazard_A
+        B = self.hazard_B
+        l_ratio_A = np.ma.log([ A(t_hold,v_prev,None) ]).filled(-np.infty)[0]
+        l_ratio_B = np.ma.log([ B(t_hold,v_prev,None) ]).filled(-np.infty)[0]
         l_ratio = l_ratio_A - l_ratio_B
         assert l_ratio <= 0, "the ratio of hazard functions should be <= 1"
         if l_curr == time_c:
             # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) : note below is _not_ a probability.
-            log_A = np.ma.log( [ A(v_prev,v_curr,t_hold) ] ).filled(-np.infty)[0]
+            log_A = np.ma.log( [ A(t_hold,v_prev,v_curr) ] ).filled(-np.infty)[0]
             log_probability = log_A - l_ratio_B
         else:
             # P(v_i,l_i | v_{i-1}, l_i, \delta w_i) = 1 if v_i == v_{i-1}
@@ -422,7 +425,7 @@ class smjpHazardFunction(object):
         self.shape_mat = shape_mat
         self.scale_mat = scale_mat
 
-    def h_create(self,s_curr,s_next):
+    def h_create(self,state_curr,state_next):
         assert state_curr in self.state_space, "must have the state in state space"
         assert state_next in self.state_space, "must have the state in state space"
         state_curr_index = self.state_space.index(state_curr)
@@ -432,7 +435,7 @@ class smjpHazardFunction(object):
         rv = Weibull({'shape':shape,'scale':scale},is_hazard_rate=True)
         return rv
 
-    def __call__(self,s_curr,s_next,observation):
+    def __call__(self,observation,s_curr,s_next):
         t_hold = observation
         if s_next is None: # return Prob of leaving s_curr for ~any state~
             rate = 0
@@ -469,27 +472,29 @@ class smjpHazardFunction(object):
 
 class smjpEmission(object):
 
-    def __init__(self,state_space,,time_final,likelihood_power,ll_compare=10):
+    def __init__(self,state_space,p_w,time_final,likelihood_power,ll_compare=10):
         self.state_space = state_space
         self.p_x = self.likelihood #?
-        self.p_w = poisson_process_B
+        self.p_w = p_w
         self.augmented_state_space = None
+        self.likelihood_power = likelihood_power
         self.how_likely_is_current_state_compared_to_others = ll_compare
+        self.final_grid_time = time_final
 
-    def compute_likelihood_obs(self,x,p_x,state_space,v_curr,inv_temp):
+    def compute_likelihood_obs(self,x,v_curr):
         # P(x | v_i )
         if isiterable(x):
             likelihood_x = 0
             for sample in x:
-                x_state_index = state_space.index(sample)
-                likelihood_x += p_x(x_state_index)[v_curr]
+                x_state_index = self.state_space.index(sample)
+                likelihood_x += self.p_x(x_state_index,v_curr)
         else:
-            x_state_index = state_space.index(x)
-            likelihood_x = p_x(x_state_index)[v_curr]
-        likelihood_x = likelihood_x**inv_temp
+            x_state_index = self.state_space.index(x)
+            likelihood_x = self.p_x(x_state_index,v_curr)
+        likelihood_x = likelihood_x**self.likelihood_power
         return likelihood_x
 
-    def __call__(self,obs,state):
+    def __call__(self,obs,s_curr):
         """
         this is called inside of the FFBS algorithm
         """
@@ -500,10 +505,10 @@ class smjpEmission(object):
         s_curr,s_next,observation,aug_state_space
         """
         # obs = [O[0,time_next],[0,time_next]]
-        x,times = observation
+        x,times = obs
         time_c,time_n = times
         # s_next not used; kept for compatability with the smjpwrapper
-        v_curr,l_curr = aug_state_space[s_curr]
+        v_curr,l_curr = self.augmented_state_space[s_curr]
         t_hold = time_n - l_curr
         t_hold_c = time_c - l_curr
 
@@ -526,13 +531,12 @@ class smjpEmission(object):
             # return no information when the observation is 
             likelihood_x = 1
         else:
-            likelihood_x = compute_likelihood_obs(x,p_x,state_space,v_curr,inv_temp)
+            likelihood_x = self.compute_likelihood_obs(x,v_curr)
 
-
-        if not np.isclose(final_grid_time,time_n):
-            likelihood_delta_w = p_w.l([t_hold_c,t_hold],v_curr)
+        if not np.isclose(self.final_grid_time,time_n):
+            likelihood_delta_w = self.p_w.l([t_hold_c,t_hold],v_curr)
         else: # the final event is not a poisson process
-            likelihood_delta_w = p_w.l([t_hold_c,t_hold],v_curr,is_poisson_event=False)
+            likelihood_delta_w = self.p_w.l([t_hold_c,t_hold],v_curr,is_poisson_event=False)
         likelihood = likelihood_x * likelihood_delta_w
         log_likelihood = np.ma.log([likelihood]).filled(-np.infty)[0]
         # print("Pw",likelihood_delta_w)
@@ -548,16 +552,16 @@ class smjpEmission(object):
         state_curr_index = self.state_space.index(state_curr)
         mn_probs[state_curr_index] = self.how_likely_is_current_state_compared_to_others
         mn_probs /= np.sum(mn_probs)
-        distribution = Multinomial({'prob_vector':mn_probs,'translation':state_space})
+        distribution = Multinomial({'prob_vector':mn_probs,'translation':self.state_space})
         return distribution
 
-    def sample(self,n=1,s_curr):
-        distribution = d_create(s_curr)
+    def sample(self,s_curr,n=1):
+        distribution = self.d_create(s_curr)
         sampled_state = distribution.s(n=n)
         return sampled_state
 
-    def likelihood(self,s_curr,observation):
-        distribution = d_create(s_curr)
+    def likelihood(self,observation,s_curr):
+        distribution = self.d_create(s_curr)
         likelihood = distribution.l(observation)
         return likelihood
 
