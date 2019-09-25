@@ -4,8 +4,8 @@ from pkg.mcmc_utils import *
 
 
 def raoteh(inference,number_of_samples,save_iter,state_space,smjp_emission,time_final,\
-           data,pi_0,hazard_A,hazard_B,poisson_process_A_hat,uuid_str,omega,filename,\
-           load_file):
+           data,pi_0,hazard_A,hazard_B,poisson_process_A_hat,uuid_str,omega,obs_times,\
+           filename,load_file):
 
     # some error checking
     inference_error_checking(inference)
@@ -42,7 +42,7 @@ def raoteh(inference,number_of_samples,save_iter,state_space,smjp_emission,time_
 
             # ~~ sample the data given the sample path ~~
             if 'data' in inference:
-                data = sample_data_posterior(V,T,*data_sampler_info)
+                data = sample_data_posterior(V,T,state_space,emission,obs_times)
                 print('data',data)
                 aggregate['data'].append(data)
 

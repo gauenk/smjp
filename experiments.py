@@ -154,8 +154,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     state_space = [1,2,3]
     obs_space = state_space
     s_size = len(state_space)
-    time_length = 2 # for time t \in [0,time_length]
-    time_final = time_length # I think "time_length" is a weird variable name
+    time_final = 2.0
     omega = 2
     uuid_str = uuid.uuid4()
 
@@ -186,23 +185,10 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     if False: #True:
         write_uuid_str = uuid_str
     write_ndarray_list_to_debug_file(debug_params,write_uuid_str)
-    
-    # hazard A needs a sampler for the prior
-    weibull_hazard_create_A = partial(weibull_hazard_create_unset,shape_mat,scale_mat,state_space)
-    weibull_hazard_sampler_A = partial(smjp_hazard_sampler_unset,state_space,weibull_hazard_create_A)
-    weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,scale_mat_tilde,state_space)
-    weibull_hazard_sampler_B = partial(smjp_hazard_sampler_unset,state_space,weibull_hazard_create_B)
 
-    # hazard A_hat needed for the grid sampler
-    weibull_hazard_create_A_hat = partial(weibull_hazard_create_unset,shape_mat,scale_mat_hat,state_space)
-    weibull_hazard_sampler_A_hat = partial(smjp_hazard_sampler_unset,state_space,weibull_hazard_create_A_hat)
-
-    # hazard B
-    weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,scale_mat_tilde,state_space)
-
-    hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A,['test'],sampler=weibull_hazard_sampler_A)
-    hazard_A_hat = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A_hat,['test'],sampler=weibull_hazard_sampler_A_hat)
-    hazard_B = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_B,['test'],sampler=weibull_hazard_sampler_B)
+    hazard_A = smjpHazardFunction(state_space,shape_mat,scale_mat)
+    hazard_B = smjpHazardFunction(state_space,shape_mat,scale_mat_tilde)
+    hazard_A_hat = smjpHazardFunction(state_space,shape_mat,scale_mat_hat)
 
     # ------------------------------------------------------------
     #
@@ -224,18 +210,10 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # -------------------------------------------------------------------------
 
     # data
-    smjp_emission_create = partial(smjp_emission_multinomial_create_unset,state_space)
-    emission_sampler = sMJPWrapper(smjp_emission_sampler,state_space,smjp_emission_create)
-    emission_likelihood = sMJPWrapper(smjp_emission_likelihood,state_space,smjp_emission_create)
-    data_samples = create_toy_data(state_space,time_length,num_of_obs,emission_sampler)
+    emission = smjpEmission(state_space,poisson_process_B,time_final,likelihood_power)
+    data_samples = create_toy_data(state_space,time_final,num_of_obs,emission)
     data_samples = [1,3,2,1] # deterministic for testing
     data = sMJPDataWrapper(data=data_samples,time=obs_times)
-    data_sampler_info = [state_space,emission_sampler,obs_times]
-    
-    # likelihood of obs
-    emission_info = [emission_likelihood,poisson_process_B,
-                     float(time_length),likelihood_power,state_space]
-    smjp_emission = partial(smjp_emission_unset,*emission_info)
 
     # initial state prior
     pi_0 = MultinomialDistribution({'prob_vector': np.ones(s_size)/s_size,\
@@ -260,7 +238,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
                     number_of_samples,
                     save_iter,
                     state_space,
-                    smjp_emission,
+                    emission,
                     time_final,
                     data,
                     pi_0,
@@ -269,9 +247,10 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
                     poisson_process_A_hat,
                     uuid_str,
                     omega,
+                    obs_times,
                     filename,
                     load_file]
-    rt_aggregate,rt_aggregate_prior,rt_uuid_str,rt_omega = raoteh(*raoteh_input)
+    rt_aggregate,rt_uuid_str,rt_omega = raoteh(*raoteh_input)
 
     # -------------------
     # --- pmcmc (pm) ----
@@ -285,7 +264,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
                    save_iter,
                    state_space,
                    hazard_A,
-                   emission_likelihood,
+                   emission,
                    time_final,
                    data,
                    pi_0,
@@ -293,32 +272,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
                    omega,
                    filename,
                    load_file]
-    #pm_aggregate,pm_aggregate_prior,pm_uuid_str,pm_omega = pmcmc(*pmcmc_input)
     pm_aggregate,pm_uuid_str = pmcmc(*pmcmc_input)
-
-    # number_of_particles = 20
-    # load_file = False
-    # pmcmc_input = [number_of_particles,
-    #                number_of_samples,
-    #                save_iter,
-    #                state_space,
-    #                hazard_A,
-    #                emission_likelihood,
-    #                time_final,
-    #                data,
-    #                pi_0,
-    #                uuid_str,
-    #                omega,
-    #                filename,
-    #                load_file]
-    # rt_aggregate,rt_uuid_str = pmcmc(*pmcmc_input)
-    
-    print(rt_uuid_str)
-    print(pm_uuid_str)
-    # overwrite if both equal
-    if rt_uuid_str == pm_uuid_str:
-        uuid_str = rt_uuid_str
-
 
     # --------------------------------------------------
     #
@@ -326,13 +280,18 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # 
     # -------------------------------------------------
 
-    # generate_sample_report_twochainz(rt_aggregate,rt_aggregate_prior,
+    # ~~ change experiment uuid if both uuid's from raoteh and pmcmcm are equal ~~ 
+    print(rt_uuid_str)
+    print(pm_uuid_str)
+    if rt_uuid_str == pm_uuid_str:
+        uuid_str = rt_uuid_str
+
+    # generate_sample_report_twochainz(rt_aggregate,rt_aggregate['prior'],
     #                                  'posterior','prior',
     #                                  state_space,uuid_str)
     # generate_sample_report_twochainz(rt_aggregate_prior,pm_aggregate_prior,'raoteh-pr','pm-pr')
     generate_sample_report_twochainz(rt_aggregate,pm_aggregate,'raoteh','pm',
                                      state_space,uuid_str)
-
 
 
 def experiment_3():

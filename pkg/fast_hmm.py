@@ -83,7 +83,7 @@ def compute_beta_term(pi,beta_next,e,obs,time_c,time_n):
         for state_c in range(ss_size):
             if is_pi_zero(time_c,time_n,state_c,state_n,states):
                 continue
-            transition = pi([time_c,time_n])[state_c,state_n]
+            transition = pi(state_c,state_n,time_c,time_n)
             # print('comp_betas',transition,likelihood_data, beta_n)
             betas[state_c] += np.exp(transition + likelihood_data + beta_n)
     betas = np.ma.log(betas).filled(-np.infty)
@@ -97,7 +97,7 @@ def compute_transition_vector(pi,state_n,time_c,time_n):
     for state_c in range(ss_size):
         # if is_pi_zero(time_c,time_n,state_c,state_n,states):
         #     continue
-        transition[state_c] = pi([time_c,time_n])[state_c,state_n]
+        transition[state_c] = pi(state_c,state_n,time_c,time_n)
         # print('pi([{},{}])[{},{}] = {}'.format(time_c,time_n,state_c,state_n,transition[state_c]))
     return transition
 
@@ -346,7 +346,7 @@ def compute_transition_matrix(pi,time_p,time_c):
                          reshape(num_of_states,num_of_states) * (-np.infty)
     for state_p in range(num_of_states):
         for state_c in range(num_of_states):
-            l_t = pi([time_p,time_c])[state_p,state_c]
+            l_t = pi(state_c,state_n,time_c,time_n)
             log_transition_mat[state_p,state_c] = l_t
         is_all_infty = np.all(np.isinf(log_transition_mat[state_p,:]))
         if not is_all_infty:
