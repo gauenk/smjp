@@ -11,7 +11,7 @@ def pmcmc(inference,number_of_particles,number_of_samples,save_iter,states,
 
     # load samples from file if we want
     if load_file:
-        aggregate,_,_,uuid_str = load_samples_in_pickle(filename)
+        aggregate,_,uuid_str = load_samples_in_pickle(filename)
         return aggregate,uuid_str
 
     # smc input

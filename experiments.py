@@ -232,8 +232,8 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # --------------------
     # --- rao-teh (rt) ---
     # --------------------
-    filename = None
-    load_file = False
+    filename = "results_raoteh_8444a650-fa79-4ba4-991d-6f21c2c99e09_final.pkl"
+    load_file = True
     raoteh_input = [inference,
                     number_of_samples,
                     save_iter,
@@ -256,8 +256,8 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # --- pmcmc (pm) ----
     # -------------------
     number_of_particles = 10
-    filename = "results_pmcmc_cd23e247-883f-42ce-ba64-649bd5bb7dcd_final.pkl"
-    load_file = False
+    filename = "results_pmcmc_8444a650-fa79-4ba4-991d-6f21c2c99e09_final.pkl"
+    load_file = True
     pmcmc_input = [inference,
                    number_of_particles,
                    number_of_samples,
