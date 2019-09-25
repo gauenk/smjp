@@ -250,7 +250,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
                     obs_times,
                     filename,
                     load_file]
-    # rt_aggregate,rt_uuid_str,rt_omega = raoteh(*raoteh_input)
+    rt_aggregate,rt_uuid_str,rt_omega = raoteh(*raoteh_input)
 
     # -------------------
     # --- pmcmc (pm) ----
