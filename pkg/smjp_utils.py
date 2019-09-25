@@ -143,12 +143,13 @@ def smjp_transition(s_prev_idx,s_curr_idx,observation,augmented_state_space,A,B)
     # print(log_probability)
     return log_probability # np.exp(log_probability)
 
-def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create,normalized=True):
+def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create,hargs=None,normalized=True):
     """
     The State_Space here refers to the ~actual state values~!
     This is different from the entire sMJP "state space" which includes 
     the randomized grid.
     """
+    print(hargs)
     t_hold = observation
     if s_next is None: # return Prob of leaving s_curr for ~any state~
         # possible error here for A_s
@@ -159,7 +160,7 @@ def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create,normali
         
         rate = 0
         for s_next in state_space:
-            hazard_rate = h_create(s_curr,s_next)
+            hazard_rate = h_create(s_curr,s_next,hargs)
             rate += hazard_rate.l(t_hold)
         return rate
         # rate_of_leaving = 0
@@ -177,19 +178,19 @@ def smjp_hazard_functions(s_curr,s_next,observation,state_space,h_create,normali
         """
         We used to _not_ normalize, but now we normalize because of the transition probability
         """
-        # hazard_rate = h_create(s_curr,s_curr)
+        # hazard_rate = h_create(s_curr,s_curr,hargs)
         # current_rate =  hazard_rate.l(t_hold)
         # rate = rate / (rate + current_rate) # normalize over ~all~
         return rate
     else:  # return Prob of leaving s_curr for s_next; normalized over s_next
-        hazard_rate = h_create(s_curr,s_next)
+        hazard_rate = h_create(s_curr,s_next,hargs)
         rate = hazard_rate.l(t_hold)
         # if normalized:
         #     normalization_rate = rate
         #     for s_next in state_space:
         #         # skip the same state (goal of this code snippet)
         #         if s_next == s_curr: continue 
-        #         hazard_rate = h_create(s_curr,s_next)
+        #         hazard_rate = h_create(s_curr,s_next,hargs)
         #         normalization_rate += hazard_rate.l(t_hold)
         #     rate /= normalization_rate
         return rate
@@ -571,9 +572,10 @@ class PoissonProcess(object):
         return mean**k * np.exp(-mean) / np.math.factorial(k)
                 
 # weibull hazard rate experiment
-def weibull_hazard_create_unset(shape_mat,scale_mat,state_space,state_curr,state_next):
+def weibull_hazard_create_unset(shape_mat,scale_mat,state_space,state_curr,state_next,hargs):
     assert state_curr in state_space, "must have the state in state space"
     assert state_next in state_space, "must have the state in state space"
+    print('whcu',hargs)
     state_curr_index = state_space.index(state_curr)
     state_next_index = state_space.index(state_next)
     shape = shape_mat[state_curr_index][state_next_index]
@@ -877,6 +879,26 @@ def smjp_emission_multinomial_create_unset(state_space,state_curr):
     return distribution
     
     
+
+class smjpTransitionFunction(object):
+
+    def __init__(self):
+        pass
+
+    def __slice__(self):
+        pass
+
+
+class smjpHazardFunctions(object):
+    """
+    this makes way more sense
+    """
+
+    def __init__(self):
+        pass
+
+    def __slice__(self):
+        pass
 
 if __name__ == "__main__":
     print("HI")

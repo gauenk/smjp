@@ -140,7 +140,7 @@ def sample_alpha_parameters(number_of_states):
     return alphas
 
 
-def experiment_2( likelihood_power = 1. ):
+def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     """ 
     Run "inner-loop" of experiment 1 from Rao-Teh alg. (loop is to generate plots)
     """
@@ -200,9 +200,9 @@ def experiment_2( likelihood_power = 1. ):
     # hazard B
     weibull_hazard_create_B = partial(weibull_hazard_create_unset,shape_mat,scale_mat_tilde,state_space)
 
-    hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A,sampler=weibull_hazard_sampler_A)
-    hazard_A_hat = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A_hat,sampler=weibull_hazard_sampler_A_hat)
-    hazard_B = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_B,sampler=weibull_hazard_sampler_B)
+    hazard_A = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A,['test'],sampler=weibull_hazard_sampler_A)
+    hazard_A_hat = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_A_hat,['test'],sampler=weibull_hazard_sampler_A_hat)
+    hazard_B = sMJPWrapper(smjp_hazard_functions,state_space,weibull_hazard_create_B,['test'],sampler=weibull_hazard_sampler_B)
 
     # ------------------------------------------------------------
     #
@@ -250,21 +250,23 @@ def experiment_2( likelihood_power = 1. ):
     # ----------------------------------------------------------------------
     number_of_samples = 6000
     save_iter = 300
-    smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,time_length]
-    V,T = sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, time_length)
 
     # --------------------
     # --- rao-teh (rt) ---
     # --------------------
     filename = None
     load_file = False
-    raoteh_input = [number_of_samples,
+    raoteh_input = [inference,
+                    number_of_samples,
                     save_iter,
-                    smjp_sampler_input,
+                    state_space,
+                    smjp_emission,
+                    time_final,
                     data,
                     pi_0,
+                    hazard_A,
+                    hazard_B,
                     poisson_process_A_hat,
-                    V,T,
                     uuid_str,
                     omega,
                     filename,
@@ -277,7 +279,8 @@ def experiment_2( likelihood_power = 1. ):
     number_of_particles = 10
     filename = "results_pmcmc_cd23e247-883f-42ce-ba64-649bd5bb7dcd_final.pkl"
     load_file = False
-    pmcmc_input = [number_of_particles,
+    pmcmc_input = [inference,
+                   number_of_particles,
                    number_of_samples,
                    save_iter,
                    state_space,
@@ -407,7 +410,7 @@ def verify_conditional_weibull():
 
     
     
-    
+
 
 """
 TODO: 
