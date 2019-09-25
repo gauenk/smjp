@@ -5,7 +5,7 @@ from numpy import transpose as npt
 from pkg.smjp_utils import sample_smjp_trajectory_prior
 from pkg.mcmc_utils import *
 
-def pmcmc(number_of_particles,number_of_samples,save_iter,states,
+def pmcmc(inference,number_of_particles,number_of_samples,save_iter,states,
           hazard_A,emission,time_final,
           data,pi_0,uuid_str,omega,filename,load_file):
 
@@ -56,13 +56,13 @@ def pmcmc(number_of_particles,number_of_samples,save_iter,states,
         # -- print summary & status --
         if i % print_iter == 0:
             print("[{} / {}] samples".format(i,number_of_samples))
-            save_samples_in_pickle(aggregate,None,None,'pmcmc',uuid_str,i)
+            save_samples_in_pickle(aggregate,None,'pmcmc',uuid_str,i)
 
         # -- collection samples --
         aggregate['V'].append(V)
         aggregate['T'].append(T)
         aggregate['prob'].append(lprob)
-    save_samples_in_pickle(aggregate,None,None,'pmcmc',uuid_str)
+    save_samples_in_pickle(aggregate,None,'pmcmc',uuid_str)
 
     return aggregate,uuid_str
 
@@ -149,7 +149,7 @@ class sMJPSMCHazardWrapper(object):
                     # sample all holding times for the next state
                     hold_time_samples = []
                     for state in state_space:
-                        hold_time_samples += [ hazard_A.sample()[v_curr,state] ]
+                        hold_time_samples += [ hazard_A.sample(v_curr,state,None) ]
 
                     # take the smallest hold-time and move to that state
                     t_hold = np.min(hold_time_samples)
@@ -247,7 +247,7 @@ def smjp_smc(*args,**kwargs):
                 current_hold_time = t_curr-t_p
                 hold_time_samples = []
                 for state in states:
-                    hold_time_samples += [ hazard_A.sample(current_hold_time)[v_p,state] ]
+                    hold_time_samples += [ hazard_A.sample(v_p,state,current_hold_time) ]
                 # take the smallest hold-time and move to that state
                 t_hold = np.min(hold_time_samples)
                 # if current_hold_time > 0:
@@ -258,7 +258,7 @@ def smjp_smc(*args,**kwargs):
 
                 if w_next >= t_next_obs: # achieved!, compute some weights
                     y_index = states.index(y[tidx])
-                    prob = emission(y_index)[v_p]
+                    prob = emission.likelihood(y_index,v_p)
                     W[p][tidx] = np_log(prob)
                     break # break the "while(True)"
                 else: # not run long enough; keep on samplin'
