@@ -262,9 +262,19 @@ def generate_sample_report_twochainz(aggA,aggB,nameA,nameB,state_space,uuid_str)
 
     # create density plots of values
     # plot_sample_densities(time_info_A,time_info_B,jump_info_A,jump_info_B,state_space)
-    compute_ks_twosample(time_info_A,time_info_B,jump_info_A,jump_info_B,state_space)
+    compute_ks_twosample_time_jump(time_info_A,time_info_B,jump_info_A,jump_info_B,state_space)
 
-    
+    # compate parameter inference
+    if 'theta' in aggA.keys() and 'theta' in aggB.keys():
+        print("-"*50)
+        print("--- Computing KS Test for Parameter Inference ---")
+        print("-"*50)
+        paramsA,paramsB = listdict_to_dictlist(aggA['theta']),listdict_to_dictlist(aggB['theta'])
+        common_inference = [key for key in paramsA.keys() if key in paramsB.keys()]
+        for key in common_inference:
+            paramA,paramB = paramsA[key],paramsB[key]
+            compute_ks_parameters(paramA,paramB,state_space)
+
     # create plots of metrics
     file_id = nameA
     plot_metric_traces(time_info_A,jump_info_A,state_space,uuid_str,file_id)
@@ -276,9 +286,64 @@ def generate_sample_report_twochainz(aggA,aggB,nameA,nameB,state_space,uuid_str)
     plot_metric_autocorrelation(time_info_B,jump_info_B,state_space,uuid_str,file_id)
     create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
     print("Finished computing metrics for experiment id {}".format(uuid_str))
+
+
     return 
 
-def compute_ks_twosample(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
+def listdict_to_dictlist(listdict):
+    dictkeys = listdict[0].keys()
+    dictlist = {key:[] for key in dictkeys}
+    for item in listdict:
+        for key,value in item.items():
+            dictlist[key].append(value)
+    # numpyify
+    for key in dictkeys:
+        dictlist[key] = np.array(dictlist[key])
+    return dictlist
+
+def compute_ks_parameters(paramsA,paramsB,state_space):
+    pair_states = []
+    paramsA_dict = {}
+    paramsB_dict = {}
+    for sci,sc in enumerate(state_space):
+        for sni,sn in enumerate(state_space):
+            pair_state = '{}_{}'.format(sc,sn)
+            pair_states.append(pair_state)
+            paramsA_dict[pair_state] = paramsA[:,sci,sni]
+            paramsB_dict[pair_state] = paramsB[:,sci,sni]
+
+    compute_ks_twosample(paramsA_dict,paramsB_dict,pair_states)
+    return 
+
+def compute_ks_twosample(samplesA,samplesB,state_space):
+    skip = 10
+    n = len(samplesA[state_space[0]][::skip])
+    m = len(samplesB[state_space[0]][::skip])
+    alpha = 0.05
+    c_alpha = 1.224
+    ub = c_alpha * np.sqrt( ( n + m ) / ( n * m ) )
+
+    print("[skip: {}]".format(skip))
+    ssize = len(state_space)
+    ks = np.zeros(ssize*2).reshape(ssize,2)
+    for state_idx,state in enumerate(state_space):
+        # times = npr.rand(len(samplesA[state]))
+        sA = samplesA[state][::skip]
+        sB = samplesB[state][::skip]
+        ks_result = sss.ks_2samp(sA,sB)
+        ks[state_idx,0] = ks_result.statistic
+        ks[state_idx,1] = ks_result.pvalue
+    
+    print(" ---> KS Results <--- ")
+    print("Reject if D_{{n,m}} > {}".format(ub))
+    print("--> ks")
+    print("[state,stat,pvalue,do_we_reject?]")
+    is_reject = ks[:,0] > ub
+    print(np.c_[np.arange(len(state_space)),ks,is_reject])
+    print("-"*30)
+
+    
+def compute_ks_twosample_time_jump(time_info,time_info_prior,jump_info,jump_info_prior,state_space):
     # not used but for records
     skip = 30
     n = len(time_info[state_space[0]][::skip])
