@@ -9,8 +9,6 @@ from pkg.hidden_markov_model import HMMWrapper,HiddenMarkovModel
 from pkg.fast_hmm import fast_HiddenMarkovModel
 from pkg.timer import Timer
 
-
-
 class sMJPDataWrapper(object):
     """
     We need to be able to access all the data within a given interval for the 
@@ -146,6 +144,12 @@ class PoissonProcess(object):
         # print(mean)
         return mean
 
+    def update_parameters(self,parameters):
+        if 'shape' in parameters.keys():
+            self.mean_function_params['shape'] = parameters['shape']
+        if 'scale' in parameters.keys():
+            self.mean_function_params['scale'] = parameters['scale']
+
     def poisson_likelihood(self,mean,k):
         return mean**k * np.exp(-mean) / np.math.factorial(k)
                 
@@ -209,11 +213,7 @@ def sample_smjp_event_times(poisson_process,V,T,time_length):
 # sample from the prior 
 #
 
-def sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, t_end, t_start = 0):
-    sample_smjp_trajectory_prior(hazard_A, pi_0, state_space, t_end, t_start = 0, v_0=None)
-
-def sample_smjp_trajectory_prior(hazard_A, pi_0, state_space,
-                                 t_end, t_start = 0, v_0 = None):
+def sample_smjp_trajectory_prior(hazard_A, pi_0, state_space,t_end, t_start = 0, v_0 = None):
     """
     ~~ Sampling from the prior ~~
     """
@@ -256,6 +256,10 @@ def sample_smjp_trajectory_prior(hazard_A, pi_0, state_space,
 #
 # posterior smjp trajectory sampler; main function in Gibbs loop
 #
+
+# "another name for the same thing" ~ DCFC
+def smjp_ffbs(W,data,state_space,hazard_A,hazard_B,smjp_e,t_end,u_str):
+    return sample_smjp_trajectory_posterior(W,data,state_space,hazard_A,hazard_B,smjp_e,t_end,u_str)
 
 def sample_smjp_trajectory_posterior(W,data,state_space,hazard_A,hazard_B,smjp_e,t_end,u_str):
     # we might need to mangle the "data" to align with the time intervals;
@@ -360,8 +364,6 @@ def sample_data_posterior(V,T,state_space,emission,obs_times):
     return data
 
 def create_toy_data(state_space,time_length,number_of_observations,emission):
-    gen_state_prob = np.ones(len(state_space)) / len(state_space) # all states equally likely
-    states_index = np.where(npr.multinomial(1,gen_state_prob,number_of_observations) == 1)[1]
     data = []
     for state_index in states_index:
         state = state_space[state_index]
@@ -420,11 +422,18 @@ class smjpHazardFunction(object):
     hazard function is weibull for now.
     """
 
-    def __init__(self,state_space,shape_mat,scale_mat):
+    def __init__(self,state_space,shape_mat,scale_mat,omega=None):
         self.state_space = state_space
         self.shape_mat = shape_mat
         self.scale_mat = scale_mat
+        self.omega = omega
 
+    def update_parameters(self,parameters):
+        if 'shape' in parameters.keys():
+            self.shape_mat = parameters['shape']
+        if 'scale' in parameters.keys():
+            self.scale_mat = parameters['scale']
+            
     def h_create(self,state_curr,state_next):
         assert state_curr in self.state_space, "must have the state in state space"
         assert state_next in self.state_space, "must have the state in state space"
@@ -525,7 +534,6 @@ class smjpEmission(object):
             print(t_hold_c)
             print(l_curr)
             exit()
-
         # P(x | v_i )
         if len(x) == 0: 
             # return no information when the observation is 
@@ -539,13 +547,7 @@ class smjpEmission(object):
             likelihood_delta_w = self.p_w.l([t_hold_c,t_hold],v_curr,is_poisson_event=False)
         likelihood = likelihood_x * likelihood_delta_w
         log_likelihood = np.ma.log([likelihood]).filled(-np.infty)[0]
-        # print("Pw",likelihood_delta_w)
-        # print("Px",likelihood_x)
-        # print("Pobs",likelihood)
-
-        # print('LL',log_likelihood)
         return log_likelihood
-
         
     def d_create(self,state_curr):
         mn_probs = np.ones(len(self.state_space))

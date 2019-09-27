@@ -187,7 +187,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     write_ndarray_list_to_debug_file(debug_params,write_uuid_str)
 
     hazard_A = smjpHazardFunction(state_space,shape_mat,scale_mat)
-    hazard_B = smjpHazardFunction(state_space,shape_mat,scale_mat_tilde)
+    hazard_B = smjpHazardFunction(state_space,shape_mat,scale_mat_tilde,omega=omega)
     hazard_A_hat = smjpHazardFunction(state_space,shape_mat,scale_mat_hat)
 
     # ------------------------------------------------------------
@@ -211,7 +211,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
 
     # data
     emission = smjpEmission(state_space,poisson_process_B,time_final,likelihood_power)
-    data_samples = create_toy_data(state_space,time_final,num_of_obs,emission)
+    # data_samples = create_toy_data(state_space,time_final,num_of_obs,emission)
     data_samples = [1,3,2,1] # deterministic for testing
     data = sMJPDataWrapper(data=data_samples,time=obs_times)
 
@@ -233,18 +233,19 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # --- rao-teh (rt) ---
     # --------------------
     filename = "results_raoteh_8444a650-fa79-4ba4-991d-6f21c2c99e09_final.pkl"
-    load_file = True
+    load_file = False
     raoteh_input = [inference,
                     number_of_samples,
                     save_iter,
                     state_space,
-                    emission,
                     time_final,
+                    emission,
                     data,
                     pi_0,
                     hazard_A,
                     hazard_B,
                     poisson_process_A_hat,
+                    poisson_process_B,
                     uuid_str,
                     omega,
                     obs_times,
@@ -257,7 +258,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # -------------------
     number_of_particles = 10
     filename = "results_pmcmc_8444a650-fa79-4ba4-991d-6f21c2c99e09_final.pkl"
-    load_file = True
+    load_file = False
     pmcmc_input = [inference,
                    number_of_particles,
                    number_of_samples,

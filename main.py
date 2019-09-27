@@ -18,6 +18,6 @@ if __name__ == "__main__":
     np.seterr(all='print')
     np.set_printoptions(precision=3)
     # verify_conditional_weibull()
-    # inference = ['trajectory','parameters']
-    inference = ['trajectory']
+    inference = ['trajectory','parameters']
+    # inference = ['trajectory']
     experiment_2(likelihood_power = 1.0,inference=inference) # trajectory inference

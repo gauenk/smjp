@@ -1,11 +1,12 @@
 import pickle,uuid,re
+import numpy.random as npr
 from pkg.smjp_utils import *
 from pkg.mcmc_utils import *
 
 
-def raoteh(inference,number_of_samples,save_iter,state_space,smjp_emission,time_final,\
-           data,pi_0,hazard_A,hazard_B,poisson_process_A_hat,uuid_str,omega,obs_times,\
-           filename,load_file):
+def raoteh(inference,number_of_samples,save_iter,state_space,time_final,emission,\
+           data,pi_0,hazard_A,hazard_B,poisson_process_A_hat,poisson_process_B,\
+           uuid_str,omega,obs_times,filename,load_file):
 
     # some error checking
     inference_error_checking(inference)
@@ -34,7 +35,7 @@ def raoteh(inference,number_of_samples,save_iter,state_space,smjp_emission,time_
         aggregate['prior'] = aggregate_prior
 
     # create a list for posterior sampling
-    smjp_sampler_input = [state_space,hazard_A,hazard_B,smjp_emission,time_final]
+    smjp_sampler_input = [state_space,hazard_A,hazard_B,emission,time_final]
     
     # start the rao-teh gibbs loop
     if not load_file:
@@ -49,7 +50,7 @@ def raoteh(inference,number_of_samples,save_iter,state_space,smjp_emission,time_
             # ~~ the main gibbs sampler for mcmc of posterior sample paths ~~
             p_u_str = 'raoteh_{}_{}'.format(uuid_str,i)
             W = sample_smjp_event_times(poisson_process_A_hat,V,T,time_final)
-            V,T,prob = sample_smjp_trajectory_posterior(W,data,*smjp_sampler_input,p_u_str)
+            V,T,prob = smjp_ffbs(W,data,*smjp_sampler_input,p_u_str)
 
             print("---------")
             print(W)
@@ -65,11 +66,10 @@ def raoteh(inference,number_of_samples,save_iter,state_space,smjp_emission,time_
 
             # ~~ gibbs sampler parameter inference ~~
             if 'parameters' in inference:
-                theta = sample_smjp_parameters(data,V,T)
+                theta = sample_smjp_parameters(data,V,T,state_space)
                 aggregate['theta'].append(theta)
-                smjp_sampler_input[1].update_parameters(theta) # hazard_A
-                smjp_sampler_input[2].update_parameters(theta) # hazard_B
-                poisson_process_A_hat.update_parameters(theta) # poisson process A_hat
+                update_parameters(hazard_A,hazard_B,poisson_process_A_hat,\
+                                  poisson_process_B,theta)
 
             # ~~ gibbs sampling prior for debugging ~~
             if 'prior' in inference:
@@ -100,6 +100,62 @@ def raoteh(inference,number_of_samples,save_iter,state_space,smjp_emission,time_
     print("omega: {}".format(omega))
     return aggregate,uuid_str,omega
 
+def sample_smjp_parameters(data,V,T,state_space,sigma=1.0):
+    sss = len(state_space)
+    means = esimtate_weibull_shape_mat(V,T,state_space)
+    cov = sigma * np.identity(sss**2)
+    proposal = npr.multivariate_normal(means.ravel(),cov).reshape(sss,sss)
+    print(proposal)
+    return {'shape':npr.uniform(0.6,3.0,sss**2).reshape(sss,sss)}
+
+
+def esimtate_weibull_shape_mat(V,T,state_space):
+    sss = len(state_space)
+    shapes = np.zeros((sss,sss))
+    for curr_idx,curr_s in enumerate(state_space):
+        for next_idx,next_s in enumerate(state_space):
+            hold_times = filter_T_by_state(T,V,curr_s,next_s)
+            np.savetxt("hold_times.txt",hold_times,fmt='%3.4f',delimiter=',')
+            if len(hold_times) == 0:
+                khat = npr.uniform(0.6,3)
+            else:
+                khat,ksum = esimtate_weibull_shape(hold_times)
+                # print("ksum: {}".format(ksum)) # how good is our "k"
+            shapes[curr_idx,next_idx] = khat
+    return shapes
+
+def filter_T_by_state(T,V,curr_s,next_s):
+    curr_indices = np.where(V == curr_s)[0]
+    next_indices = np.where(V == next_s)[0]
+    curr_i = []
+    next_i = []
+    # we need to loop b/c different lengths
+    for c_i in curr_indices: 
+        for n_i in next_indices:
+            if c_i + 1 == n_i:
+                curr_i += [c_i]
+                next_i += [n_i]
+    hold_times = []
+    for c,n in zip(curr_i,next_i):
+        hold_times += [ T[n] - T[c] ]
+    return hold_times
+    
+def esimtate_weibull_shape(T,grid=0.001,grid_max=5):
+    lnT = np.log(T)
+    mean = np.mean(T)
+    ln_mean = np.mean(lnT)
+    optimal_k = -1
+    optimal_ksum = np.inf
+    for k in np.arange(grid,grid_max,grid): # find k via grid search
+        Tk = np.power(T,k)
+        sumTk = np.sum(Tk)
+        ksum = np.sum(Tk * lnT) / sumTk - 1/k - ln_mean
+        # print(k,ksum)
+        if np.abs(ksum) < np.abs(optimal_ksum):
+            optimal_k = k
+            optimal_ksum = ksum
+    return optimal_k,optimal_ksum
+        
 def inference_error_checking(inference):
     if len(inference) == 0:
         raise ValueError("We need to infer something.")
@@ -108,3 +164,24 @@ def inference_error_checking(inference):
     if 'parameters' in inference and 'trajectory' not in inference:
         raise ValueError("We can't have parameter inference without trajectory inference.")
     
+def update_parameters(hazard_A,hazard_B,poisson_proc_A_hat,poisson_proc_B,theta):
+    # pi just for testing
+    omega = hazard_B.omega
+
+    # A
+    print(hazard_A.shape_mat)
+    hazard_A.update_parameters(theta)
+
+    # B
+    scale_mat_tilde = create_upperbound_scale(hazard_A.shape_mat,hazard_A.scale_mat,omega)
+    params = {'shape':hazard_A.shape_mat,'scale':scale_mat_tilde}
+    hazard_B.update_parameters(params)
+
+    # A_hat
+    scale_mat_hat = create_upperbound_scale(hazard_A.shape_mat,hazard_A.scale_mat,omega-1)
+    params = {'shape':hazard_A.shape_mat,'scale':scale_mat_hat}
+    poisson_proc_A_hat.update_parameters(params)
+
+    # poissonProcessB
+    params = {'shape':hazard_A.shape_mat,'scale':scale_mat_tilde}    
+    poisson_proc_B.update_parameters(params)
