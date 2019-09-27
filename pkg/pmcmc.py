@@ -34,24 +34,30 @@ def pmcmc(inference,number_of_particles,number_of_samples,save_iter,states,
     # print init sample
     print("----------------------------")
     p_u_str = 'pmcmc_{}_init'.format(uuid_str)
-    V,T,lprob = smjp_smc(**smc_input)
-    print("--- Likelihood {} ---".format(lprob))
+    params = smc_input['A'].shape_mat
+    V,T,ldata = smjp_smc(**smc_input)
+    lprop = 0 # compute initial parameter likelihood
+    print("--- Likelihood {} ---".format(ldata))
     print("--- Initial Sample (V,T) ---")
     print(np.c_[V,T])
     print("----------------------------")
 
     # create collection bins
-    aggregate = {'V':[],'T':[],'prob':[]}
+    aggregate = {'V':[],'T':[],'theta':[],'prob':[]}
     print_iter = 300
 
     # run MH mcmc with proposals from SMC
     for i in range(number_of_samples):
-        # regular,old mh-mcmc
-        V_prop,T_prop,lprob_prop = smjp_smc(**smc_input)
+        # regular,old mh-mcmc (now with parameter inference)
+        params_prop,lprop_prop = parameter_proposal(states)
+        update_parameters(smc_input,params_prop)
+        V_prop,T_prop,ldata_prop = smjp_smc(**smc_input)
         coin_flip = np_log(npr.uniform(0,1,1)[0])[0]
-        # print("lprop_prop - lprov: {:.3f}  |lprob_prop: {:.3f}   | lprob: {:.3f}   | coin_flip: {:.3f}   ".format(lprob_prop-lprob,lprob_prop,lprob,coin_flip))
-        if coin_flip <= ( lprob_prop - lprob ):
-            V,T,lprob = V_prop,T_prop,lprob_prop
+        # print("lprop_prop - lprov: {:.3f}  |ldata_prop: {:.3f}   | ldata: {:.3f}   | coin_flip: {:.3f}   ".format(ldata_prop-ldata,ldata_prop,ldata,coin_flip))
+        # alpha = ldata_prop - ldata # alpha for trajectory samples
+        alpha = ldata_prop + lprop - ldata - lprop_prop # alpha for parameter inference
+        if coin_flip <= alpha:
+            V,T,params,ldata,lprop = V_prop,T_prop,params_prop,ldata_prop,lprop_prop
 
         # -- print summary & status --
         if i % print_iter == 0:
@@ -61,10 +67,23 @@ def pmcmc(inference,number_of_particles,number_of_samples,save_iter,states,
         # -- collection samples --
         aggregate['V'].append(V)
         aggregate['T'].append(T)
-        aggregate['prob'].append(lprob)
+        aggregate['theta'].append(params)
+        aggregate['prob'].append(ldata)
     save_samples_in_pickle(aggregate,None,'pmcmc',uuid_str)
 
     return aggregate,uuid_str
+
+def update_parameters(smc_input,params):
+    hazard_A = smc_input['A']
+    hazard_A.update_parameters(params)
+
+def parameter_proposal(states):
+    ssize = len(states)
+    shape_sample = npr.uniform(0.6,3,ssize**2).reshape(ssize,ssize)
+    shape_sample_lprob = 0
+    params = {'shape':shape_sample}
+    sample_prob = shape_sample_lprob
+    return params,sample_prob
 
 def sample_smjp_smc(data,state_space,hazard_A,hazard_B,smjp_e,t_end,u_str):
         
