@@ -55,7 +55,19 @@ def compute_evaluation_chain_metrics(agg,states):
             
     return state_times,state_jumps
             
-def compute_metric_summaries(state_times,state_jumps,states):
+def compute_metric_summaries(samples,states):
+    # compute summary statistics
+    info = {'median':{state:0 for state in states},
+                 'mean':{state:0 for state in states},
+                 'var':{state:0 for state in states},
+    }
+    for state in states:
+        info['median'][state] = np.median(samples[state])
+        info['mean'][state] = np.mean(samples[state])
+        info['var'][state] = np.var(samples[state])
+    return info
+
+def compute_metric_summaries_trajectory(state_times,state_jumps,states):
 
     # compute summary statistics
     time_info = {'median':{state:0 for state in states},
@@ -79,26 +91,24 @@ def compute_metric_summaries(state_times,state_jumps,states):
 
     return time_info, jump_info
 
-def plot_metric_traces(time_info,jump_info,states,uuid_str,file_id=None):
+def plot_metric_traces(samples,name,title,states,uuid_str,file_id=None):
     # format data
     x_grid = {state:None for state in states}
     for state in states:
-        x_grid[state] = np.arange(len(time_info[state]))
+        x_grid[state] = np.arange(len(samples[state]))
     
     # plot it
     if file_id:
-        plot_filename = "trace_time_{}_{}.png".format(uuid_str,file_id)
+        plot_filename = "trace_{}_{}_{}.png".format(name,uuid_str,file_id)
     else:
-        plot_filename = "trace_time_{}.png".format(uuid_str)        
-    plot_title = "Traces of [Total Time] by State"
-    plot_metric_helper(x_grid,time_info,states,plot_title,plot_filename)
-
-    if file_id:
-        plot_filename = "trace_jump_{}_{}.png".format(uuid_str,file_id)
-    else:
-        plot_filename = "trace_jump_{}.png".format(uuid_str)
-    plot_title = "Traces of [Number of Jumps] by State"
-    plot_metric_helper(x_grid,jump_info,states,plot_title,plot_filename)
+        plot_filename = "trace_{}_{}.png".format(name,uuid_str)        
+    plot_metric_helper(x_grid,samples,states,title,plot_filename)
+    
+def plot_metric_traces_time_jump(time_info,jump_info,states,uuid_str,file_id=None):
+    title = "Traces of [Total Time] by State"
+    plot_metric_traces(time_info,"time",title,states,uuid_str,file_id)
+    title = "Traces of [Number of Jumps] by State"
+    plot_metric_traces(jump_info,"jump",title,states,uuid_str,file_id)
 
 def toy_correlationed_data(nsamples=1000):
     x = np.zeros(nsamples)
@@ -114,36 +124,31 @@ def toy_correlationed_data(nsamples=1000):
 def npr_unif(b,e):
     return npr.uniform(b,e,1)[0]
 
-def plot_metric_autocorrelation(time_info,jump_info,states,uuid_str,file_id=None):
-
+def plot_metric_autocorrelation(samples,name,title,states,uuid_str,file_id=None):
     # compute autocorrelation
+    max_acorr = 50
     ss = len(states)
-    time_acorr = {state:0 for state in states}
-    jump_acorr = {state:0 for state in states}
+    acorr = {state:0 for state in states}
     x_grid = {state:None for state in states}
     for state in states:
         # data = toy_correlationed_data()
-        # time_acorr[state] = compute_autocorrelation(data)
-        time_acorr[state] = compute_autocorrelation(time_info[state])
-        time_acorr[state] = time_acorr[state][:50]
-        jump_acorr[state] = compute_autocorrelation(jump_info[state])        
-        jump_acorr[state] = jump_acorr[state][:50]
-        x_grid[state] = np.arange(len(time_acorr[state]))
-
+        # acorr[state] = compute_autocorrelation(data)
+        acorr[state] = compute_autocorrelation(samples[state])
+        acorr[state] = acorr[state][:max_acorr]
+        x_grid[state] = np.arange(len(acorr[state]))
     # plot results
     if file_id:
-        plot_filename = "autocorrelation_time_{}_{}.png".format(uuid_str,file_id)
+        plot_filename = "autocorrelation_{}_{}_{}.png".format(name,uuid_str,file_id)
     else:
-        plot_filename = "autocorrelation_time_{}.png".format(uuid_str)
-    plot_title = "Autocorrelation of [Total Time]"
-    plot_metric_helper(x_grid,time_acorr,states,plot_title,plot_filename)
+        plot_filename = "autocorrelation_{}_{}.png".format(name,uuid_str)
 
-    if file_id:
-        plot_filename = "autocorrelation_jump_{}_{}.png".format(uuid_str,file_id)
-    else:
-        plot_filename = "autocorrelation_jump_{}.png".format(uuid_str)        
-    plot_title = "Autocorrelation of [Number of Jumps]"
-    plot_metric_helper(x_grid,jump_acorr,states,plot_title,plot_filename)
+    plot_metric_helper(x_grid,acorr,states,title,plot_filename)
+    
+def plot_metric_autocorrelation_time_jump(time_info,jump_info,states,uuid_str,file_id=None):
+    title = "Autocorrelation of [Total Time]"
+    plot_metric_autocorrelation(time_info,'time',title,states,uuid_str,file_id)
+    title = "Autocorrelation of [Number of Jumps]"
+    plot_metric_autocorrelation(jump_info,'jump',title,states,uuid_str,file_id)
 
 def plot_metric_helper(x_grid,y_data,states,plot_title,plot_filename):
     import matplotlib.pyplot as plt
@@ -221,13 +226,12 @@ def get_image_name(file_list,metric,field,file_id):
 
 
 def generate_sample_report_twochainz(aggA,aggB,nameA,nameB,state_space,uuid_str):
+    states = state_space # alias
     time_info_A,jump_info_A = compute_evaluation_chain_metrics(aggA,state_space)
     time_info_B,jump_info_B = compute_evaluation_chain_metrics(aggB,state_space)
 
-    agg_time_info_A,agg_jump_info_A = compute_metric_summaries(time_info_A,jump_info_A,\
-                                                               state_space)
-    agg_time_info_B,agg_jump_info_B = compute_metric_summaries(time_info_B,jump_info_B,\
-                                                               state_space)
+    agg_time_info_A,agg_jump_info_A = compute_metric_summaries_trajectory(time_info_A,jump_info_A,state_space)
+    agg_time_info_B,agg_jump_info_B = compute_metric_summaries_trajectory(time_info_B,jump_info_B,state_space)
 
     print("-=-=-=- Aggregate Information -=-=-=-")
     print(" ------------ ")
@@ -264,6 +268,19 @@ def generate_sample_report_twochainz(aggA,aggB,nameA,nameB,state_space,uuid_str)
     # plot_sample_densities(time_info_A,time_info_B,jump_info_A,jump_info_B,state_space)
     compute_ks_twosample_time_jump(time_info_A,time_info_B,jump_info_A,jump_info_B,state_space)
 
+    # create plots of metrics
+    if False:
+        file_id = nameA
+        plot_metric_traces_time_jump(time_info_A,jump_info_A,state_space,uuid_str,file_id)
+        plot_metric_autocorrelation_time_jump(time_info_A,jump_info_A,state_space,uuid_str,file_id)
+        create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
+
+        file_id = nameB
+        plot_metric_traces_time_jump(time_info_B,jump_info_B,state_space,uuid_str,file_id)
+        plot_metric_autocorrelation_time_jump(time_info_B,jump_info_B,state_space,uuid_str,file_id)
+        create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
+        print("Finished computing metrics for experiment id {}".format(uuid_str))
+
     # compate parameter inference
     if 'theta' in aggA.keys() and 'theta' in aggB.keys():
         print("-"*50)
@@ -272,22 +289,31 @@ def generate_sample_report_twochainz(aggA,aggB,nameA,nameB,state_space,uuid_str)
         paramsA,paramsB = listdict_to_dictlist(aggA['theta']),listdict_to_dictlist(aggB['theta'])
         common_inference = [key for key in paramsA.keys() if key in paramsB.keys()]
         for key in common_inference:
-            paramA,paramB = paramsA[key],paramsB[key]
-            compute_ks_parameters(paramA,paramB,state_space)
+            paramA_raw,paramB_raw = paramsA[key],paramsB[key]
+            paramA,paramB,pstates = compute_params_by_state(paramA_raw,paramB_raw,state_space)
+            compute_ks_twosample(paramA,paramB,pstates)
+            # traces
+            file_id = nameA + '_{}'.format(key)
+            title = "{} Traces of [Parameter {}] by State Pairs".format(nameA,key)
+            plot_metric_traces(paramA,"param",title,pstates,uuid_str,file_id)
+            file_id = nameB + '_{}'.format(key)
+            title = "{} Traces of [Parameter {}] by State Pairs".format(nameB,key)
+            plot_metric_traces(paramB,"param",title,pstates,uuid_str,file_id)
+            # autocorrelation
+            file_id = nameA + '_{}'.format(key)
+            title = "{} Autocorrelation of [Parameter {}] by State Pairs".format(nameB,key)
+            plot_metric_autocorrelation(paramA,key,title,pstates,uuid_str,file_id)
+            file_id = nameA + '_{}'.format(key)
+            title = "{} Autocorrelation of [Parameter {}] by State Pairs".format(nameB,key)
+            plot_metric_autocorrelation(paramA,key,title,pstates,uuid_str,file_id)
+            # summary statistics
+            summaryA = compute_metric_summaries(paramA,pstates)
+            summaryB = compute_metric_summaries(paramB,pstates)
+            print("--- summary of [{}] parameter inference ---".format(key))
+            print(summaryA)
+            print(summaryB)
 
-    # create plots of metrics
-    file_id = nameA
-    plot_metric_traces(time_info_A,jump_info_A,state_space,uuid_str,file_id)
-    plot_metric_autocorrelation(time_info_A,jump_info_A,state_space,uuid_str,file_id)
-    create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
-
-    file_id = nameB
-    plot_metric_traces(time_info_B,jump_info_B,state_space,uuid_str,file_id)
-    plot_metric_autocorrelation(time_info_B,jump_info_B,state_space,uuid_str,file_id)
-    create_summary_image(uuid_str,['trace','autocorr'],['time','jump'],file_id)
-    print("Finished computing metrics for experiment id {}".format(uuid_str))
-
-
+        create_summary_image(uuid_str,['trace','autocorr'],common_inference,file_id)
     return 
 
 def listdict_to_dictlist(listdict):
@@ -301,7 +327,7 @@ def listdict_to_dictlist(listdict):
         dictlist[key] = np.array(dictlist[key])
     return dictlist
 
-def compute_ks_parameters(paramsA,paramsB,state_space):
+def compute_params_by_state(paramsA,paramsB,state_space):
     pair_states = []
     paramsA_dict = {}
     paramsB_dict = {}
@@ -311,12 +337,10 @@ def compute_ks_parameters(paramsA,paramsB,state_space):
             pair_states.append(pair_state)
             paramsA_dict[pair_state] = paramsA[:,sci,sni]
             paramsB_dict[pair_state] = paramsB[:,sci,sni]
-
-    compute_ks_twosample(paramsA_dict,paramsB_dict,pair_states)
-    return 
+    return paramsA_dict,paramsB_dict,pair_states
 
 def compute_ks_twosample(samplesA,samplesB,state_space):
-    skip = 10
+    skip = 30
     n = len(samplesA[state_space[0]][::skip])
     m = len(samplesB[state_space[0]][::skip])
     alpha = 0.05

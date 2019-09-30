@@ -159,7 +159,8 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     uuid_str = uuid.uuid4()
 
     # experiment info
-    obs_times = [1./3,2./3,4./3,5./3]
+    # obs_times = [1./3,2./3,4./3,5./3]
+    obs_times = np.arange(0,time_final,0.1)
     num_of_obs = len(obs_times)
 
     # ------------------------------------------
@@ -212,7 +213,8 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # data
     emission = smjpEmission(state_space,poisson_process_B,time_final,likelihood_power)
     # data_samples = create_toy_data(state_space,time_final,num_of_obs,emission)
-    data_samples = [1,3,2,1] # deterministic for testing
+    # data_samples = [1,3,2,1] # deterministic for testing
+    data_samples = np.array([1,1,1,1,1,1,1,2,2,2,1,1,1,1,3,3,2,1,1,3])
     data = sMJPDataWrapper(data=data_samples,time=obs_times)
 
     # initial state prior
@@ -232,7 +234,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # --------------------
     # --- rao-teh (rt) ---
     # --------------------
-    filename = "results_raoteh_d423cb75-99cb-43c0-9d8d-e44069035fbc_300.pkl"
+    filename = "results_raoteh_d423cb75-99cb-43c0-9d8d-e44069035fbc_final.pkl"
     load_file = True
     raoteh_input = [inference,
                     number_of_samples,
@@ -257,7 +259,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # --- pmcmc (pm) ----
     # -------------------
     number_of_particles = 10
-    filename = "results_pmcmc_7b7eae4f-a789-4f36-814f-6f875c440031_900.pkl"
+    filename = "results_pmcmc_d423cb75-99cb-43c0-9d8d-e44069035fbc_final.pkl"
     load_file = True
     pmcmc_input = [inference,
                    number_of_particles,
@@ -314,7 +316,7 @@ def get_sample_frequency_multiplier(cond_x_st,states):
     The max number of repeats is associated with the precision of the 
     likelihood... Having something super unlikely occur _once_ or have the 
     possibility of occuring can make number of repeats of a sample increase
-    dramatically; we have to repeat the common events several times.
+    Dramatically; we have to repeat the common events several times.
 
     f_mult = "frequency based multiplier"
     """
