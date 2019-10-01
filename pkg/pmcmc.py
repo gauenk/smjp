@@ -34,7 +34,7 @@ def pmcmc(inference,number_of_particles,number_of_samples,save_iter,states,
     # print init sample
     print("----------------------------")
     p_u_str = 'pmcmc_{}_init'.format(uuid_str)
-    params = smc_input['A'].shape_mat
+    params = {'shape': smc_input['A'].shape_mat}
     V,T,ldata = smjp_smc(**smc_input)
     lprop = 0 # compute initial parameter likelihood
     print("--- Likelihood {} ---".format(ldata))
@@ -227,7 +227,7 @@ def smjp_smc(*args,**kwargs):
     N = kwargs['N'] # number of particles
     Obs = kwargs['data'] # observations
     y = Obs.data
-    t = [0] + Obs.time # includes "0" by convention. required for proper looping below.
+    t = [0] + list(Obs.time) # includes "0" by convention. required for proper looping below.
     D = len(y)
     hazard_A = kwargs['A'] # target distribution (hazard_A; assume we can't sample hazard_A)
     emission = kwargs['emission']

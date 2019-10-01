@@ -286,6 +286,13 @@ def generate_sample_report_twochainz(aggA,aggB,nameA,nameB,state_space,uuid_str)
         print("-"*50)
         print("--- Computing KS Test for Parameter Inference ---")
         print("-"*50)
+        print(aggA['theta'][0])
+        print(aggB['theta'][0])
+        print(aggB['theta'][5])
+        print(aggB['theta'][10])
+        print(type(aggA['theta']))
+        print(type(aggB['theta']))
+        print(type(aggA['theta'][0]))
         paramsA,paramsB = listdict_to_dictlist(aggA['theta']),listdict_to_dictlist(aggB['theta'])
         common_inference = [key for key in paramsA.keys() if key in paramsB.keys()]
         for key in common_inference:
@@ -340,7 +347,7 @@ def compute_params_by_state(paramsA,paramsB,state_space):
     return paramsA_dict,paramsB_dict,pair_states
 
 def compute_ks_twosample(samplesA,samplesB,state_space):
-    skip = 30
+    skip = 500
     n = len(samplesA[state_space[0]][::skip])
     m = len(samplesB[state_space[0]][::skip])
     alpha = 0.05

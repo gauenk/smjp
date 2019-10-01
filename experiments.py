@@ -160,7 +160,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
 
     # experiment info
     # obs_times = [1./3,2./3,4./3,5./3]
-    obs_times = np.arange(0,time_final,0.1)
+    obs_times = np.arange(0.1,time_final,0.1)
     num_of_obs = len(obs_times)
 
     # ------------------------------------------
@@ -214,7 +214,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     emission = smjpEmission(state_space,poisson_process_B,time_final,likelihood_power)
     # data_samples = create_toy_data(state_space,time_final,num_of_obs,emission)
     # data_samples = [1,3,2,1] # deterministic for testing
-    data_samples = np.array([1,1,1,1,1,1,1,2,2,2,1,1,1,1,3,3,2,1,1,3])
+    data_samples = np.array([1,1,1,1,1,1,2,2,2,1,1,1,1,3,3,2,1,1,3])
     data = sMJPDataWrapper(data=data_samples,time=obs_times)
 
     # initial state prior
@@ -234,7 +234,7 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # --------------------
     # --- rao-teh (rt) ---
     # --------------------
-    filename = "results_raoteh_d423cb75-99cb-43c0-9d8d-e44069035fbc_final.pkl"
+    filename = "results_raoteh_3059de65-2596-40a7-9395-e1e059351c16_final.pkl"
     load_file = True
     raoteh_input = [inference,
                     number_of_samples,
@@ -259,7 +259,8 @@ def experiment_2( likelihood_power = 1. , inference = ['trajectory']):
     # --- pmcmc (pm) ----
     # -------------------
     number_of_particles = 10
-    filename = "results_pmcmc_d423cb75-99cb-43c0-9d8d-e44069035fbc_final.pkl"
+    # filename = "results_pmcmc_66120de8-d9f2-4e1c-8fc0-2317456c0768_final.pkl"
+    filename = "results_pmcmc_0f9ee403-c4aa-4637-8f66-5387ba4bda34_4800.pkl"
     load_file = True
     pmcmc_input = [inference,
                    number_of_particles,
