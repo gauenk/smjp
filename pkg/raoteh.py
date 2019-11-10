@@ -7,6 +7,12 @@ from pkg.mcmc_utils import *
 def raoteh(inference,number_of_samples,save_iter,state_space,time_final,emission,\
            data,pi_0,hazard_A,hazard_B,poisson_process_A_hat,poisson_process_B,\
            uuid_str,omega,obs_times,filename,load_file):
+    """
+    Implements the RaoTeh algorithm.
+
+    We also allow for Gibbs sampling of parameters. This option is available if the 
+    'parameters' word inclued in the Python list "inference".
+    """
 
     # some error checking
     inference_error_checking(inference)
